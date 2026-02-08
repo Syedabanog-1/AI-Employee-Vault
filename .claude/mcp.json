@@ -1,0 +1,78 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "D:\\syeda Gulzar Bano\\AI_Employee_Vault_"],
+      "env": {}
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"],
+      "env": {
+        "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
+      }
+    },
+    "gmail": {
+      "command": "node",
+      "args": ["./mcp-servers/gmail/index.js"],
+      "env": {
+        "GOOGLE_CLIENT_ID": "${GOOGLE_CLIENT_ID}",
+        "GOOGLE_CLIENT_SECRET": "${GOOGLE_CLIENT_SECRET}",
+        "GOOGLE_REFRESH_TOKEN": "${GOOGLE_REFRESH_TOKEN}"
+      }
+    },
+    "whatsapp": {
+      "command": "node",
+      "args": ["./mcp-servers/whatsapp/index.js"],
+      "env": {
+        "WHATSAPP_ACCESS_TOKEN": "${WHATSAPP_ACCESS_TOKEN}",
+        "WHATSAPP_PHONE_NUMBER_ID": "${WHATSAPP_PHONE_NUMBER_ID}"
+      }
+    },
+    "linkedin": {
+      "command": "node",
+      "args": ["./mcp-servers/linkedin/index.js"],
+      "env": {
+        "LINKEDIN_CLIENT_ID": "${LINKEDIN_CLIENT_ID}",
+        "LINKEDIN_CLIENT_SECRET": "${LINKEDIN_CLIENT_SECRET}",
+        "LINKEDIN_ACCESS_TOKEN": "${LINKEDIN_ACCESS_TOKEN}"
+      }
+    },
+    "odoo": {
+      "command": "node",
+      "args": ["./mcp-servers/odoo/index.js"],
+      "env": {
+        "ODOO_URL": "${ODOO_URL}",
+        "ODOO_DB": "${ODOO_DB}",
+        "ODOO_USER": "${ODOO_USER}",
+        "ODOO_API_KEY": "${ODOO_API_KEY}"
+      }
+    },
+    "twitter": {
+      "command": "node",
+      "args": ["./mcp-servers/twitter/index.js"],
+      "env": {
+        "TWITTER_API_KEY": "${TWITTER_API_KEY}",
+        "TWITTER_API_SECRET": "${TWITTER_API_SECRET}",
+        "TWITTER_ACCESS_TOKEN": "${TWITTER_ACCESS_TOKEN}",
+        "TWITTER_ACCESS_SECRET": "${TWITTER_ACCESS_SECRET}"
+      }
+    },
+    "facebook": {
+      "command": "node",
+      "args": ["./mcp-servers/facebook/index.js"],
+      "env": {
+        "FB_PAGE_ID": "${FB_PAGE_ID}",
+        "FB_ACCESS_TOKEN": "${FB_ACCESS_TOKEN}"
+      }
+    },
+    "instagram": {
+      "command": "node",
+      "args": ["./mcp-servers/instagram/index.js"],
+      "env": {
+        "IG_ACCOUNT_ID": "${IG_ACCOUNT_ID}",
+        "IG_ACCESS_TOKEN": "${IG_ACCESS_TOKEN}"
+      }
+    }
+  }
+}

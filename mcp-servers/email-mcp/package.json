@@ -1,0 +1,18 @@
+{
+  "name": "email-mcp",
+  "version": "1.0.0",
+  "description": "Email MCP Server for AI Employee",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.1.0",
+    "nodemailer": "^6.9.0",
+    "googleapis": "^126.0.0"
+  },
+  "keywords": ["mcp", "email", "ai", "employee"],
+  "author": "AI Employee Vault",
+  "license": "MIT"
+}

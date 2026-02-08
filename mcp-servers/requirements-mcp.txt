@@ -1,0 +1,15 @@
+# MCP Server Requirements
+# Install with: pip install -r requirements-mcp.txt
+
+# Core MCP SDK
+mcp>=1.0.0
+pydantic>=2.0.0
+
+# Filesystem MCP dependencies
+aiofiles>=23.0.0
+
+# Async support
+asyncio-mqtt>=0.14.0
+
+# HTTP client for API requests
+httpx>=0.25.0

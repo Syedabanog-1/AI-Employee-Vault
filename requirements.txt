@@ -1,0 +1,55 @@
+# AI Employee Vault - Python Dependencies
+# Install with: pip install -r requirements.txt
+
+# ============================================
+# Bronze Phase - Foundation
+# ============================================
+watchdog>=3.0.0          # FileSystem watcher
+
+# ============================================
+# Silver Phase - Functional Assistant
+# ============================================
+google-auth>=2.0.0       # Gmail API authentication
+google-auth-oauthlib>=1.0.0
+google-api-python-client>=2.0.0
+
+# ============================================
+# Gold Phase - Autonomous Employee
+# ============================================
+# Odoo JSON-RPC client
+odoorpc>=0.9.0
+
+# Social media APIs
+linkedin-api>=2.0.0      # LinkedIn (unofficial)
+tweepy>=4.0.0            # Twitter/X API
+facebook-sdk>=3.0.0      # Facebook Graph API
+
+# Browser automation (for WhatsApp, payments)
+playwright>=1.40.0
+
+# ============================================
+# Platinum Phase - Cloud + Local
+# ============================================
+# Git for vault sync
+gitpython>=3.0.0
+
+# Process management
+psutil>=5.0.0            # Process monitoring
+
+# ============================================
+# Common Utilities
+# ============================================
+python-dotenv>=1.0.0     # Environment variables
+pyyaml>=6.0              # YAML parsing
+requests>=2.28.0         # HTTP client
+aiohttp>=3.8.0           # Async HTTP
+schedule>=1.2.0          # Task scheduling
+tenacity>=8.0.0          # Retry logic
+
+# ============================================
+# Development & Testing
+# ============================================
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0            # Code formatting
+mypy>=1.0.0              # Type checking
