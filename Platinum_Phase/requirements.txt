@@ -1,0 +1,30 @@
+# AI Employee Vault - Platinum Phase Requirements
+# Cloud Agent + Local Agent dependencies
+
+# Web framework for APIs
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+
+# Core dependencies (same as main app)
+watchdog>=3.0.0
+python-dotenv>=1.0.0
+pyyaml>=6.0
+requests>=2.28.0
+aiohttp>=3.8.0
+schedule>=1.2.0
+tenacity>=8.0.0
+psutil>=5.0.0
+
+# For distributed operations
+paramiko>=3.4.0  # SSH for remote operations
+fabric>=3.2.0    # High-level interface for paramiko
+cryptography>=41.0.0
+
+# For synchronization
+PyGithub>=1.59.0  # GitHub API for vault sync
+gitpython>=3.1.0  # Git operations
+pydrive2>=1.19.0  # Google Drive sync (alternative sync method)
+
+# For monitoring and health checks
+prometheus-client>=0.20.0
+psutil>=5.0.0
