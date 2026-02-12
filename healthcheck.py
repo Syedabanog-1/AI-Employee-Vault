@@ -1,18 +1,24 @@
 """
-AI Employee Vault - Web Server
-Serves dashboard (frontend) + REST API (backend) + health probes.
+AI Employee Vault - FastAPI Backend
+Swagger UI: /docs  |  ReDoc: /redoc
 """
 
-import json
 import os
 import sys
 import time
-import urllib.parse
 from datetime import datetime, timezone
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 
 
+# =========================================
+# Config
+# =========================================
 START_TIME = time.time()
 VAULT_PATH = Path(os.getenv("VAULT_PATH", "/app"))
 
@@ -26,320 +32,103 @@ QUEUE_FOLDERS = {
     "rejected": "Rejected",
 }
 
+# =========================================
+# FastAPI App
+# =========================================
+app = FastAPI(
+    title="AI Employee Vault API",
+    description="""
+## AI Employee Vault - Autonomous Personal Assistant
 
-class VaultAPIHandler(BaseHTTPRequestHandler):
-    """Handles frontend dashboard + backend REST API."""
+Backend REST API for managing the AI Employee Vault system.
 
-    def do_GET(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path.rstrip("/") or "/"
+### Features
+- **Queue Management** - View and manage task queues (Inbox, Needs Action, Approved, Done, etc.)
+- **Task Submission** - Submit new tasks via API
+- **System Monitoring** - Health checks, metrics, and system status
+- **Configuration** - View runtime config and integration status
 
-        # --- Frontend ---
-        if path == "/":
-            self._handle_dashboard()
+### Queue Workflow
+```
+Inbox → Needs_Action → Plans → Pending_Approval → Approved → In_Progress → Done
+```
+    """,
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 
-        # --- Health probes ---
-        elif path == "/health":
-            self._handle_health()
-        elif path == "/ready":
-            self._handle_readiness()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-        # --- Backend API ---
-        elif path == "/api":
-            self._handle_api_index()
-        elif path == "/api/status":
-            self._handle_api_status()
-        elif path == "/api/metrics":
-            self._handle_api_metrics()
-        elif path == "/api/queues":
-            self._handle_api_queues()
-        elif path.startswith("/api/queue/"):
-            queue_name = path.split("/api/queue/")[1]
-            self._handle_api_queue_detail(queue_name)
-        elif path == "/api/config":
-            self._handle_api_config()
-        elif path == "/api/logs":
-            self._handle_api_logs()
 
-        # Legacy endpoint
-        elif path == "/metrics":
-            self._handle_api_metrics()
+# =========================================
+# Pydantic Models
+# =========================================
+class TaskSubmit(BaseModel):
+    """Submit a new task to the Inbox."""
+    title: str
+    content: Optional[str] = ""
 
-        else:
-            self._send_json(404, {"error": "Not found", "path": path})
-
-    def do_POST(self):
-        parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path.rstrip("/")
-
-        if path == "/api/inbox":
-            self._handle_api_submit_task()
-        else:
-            self._send_json(404, {"error": "Not found", "path": path})
-
-    # =========================================
-    # Backend API Endpoints
-    # =========================================
-
-    def _handle_api_index(self):
-        """GET /api - List all available backend API endpoints."""
-        base = f"https://{self.headers.get('Host', 'localhost')}"
-        response = {
-            "service": "AI Employee Vault API",
-            "version": os.getenv("APP_VERSION", "1.0.0"),
-            "endpoints": {
-                "GET /api": "This index - list all endpoints",
-                "GET /api/status": "Full system status (health + queues + checks)",
-                "GET /api/metrics": "Queue sizes and uptime metrics",
-                "GET /api/queues": "All queue names and item counts",
-                "GET /api/queue/{name}": "List items in a specific queue (inbox, needs_action, pending_approval, approved, in_progress, done, rejected)",
-                "GET /api/config": "Current runtime configuration",
-                "GET /api/logs": "Recent system log entries",
-                "POST /api/inbox": "Submit a new task to Inbox (JSON body: {title, content})",
-                "GET /health": "Liveness probe",
-                "GET /ready": "Readiness probe",
-            },
-            "links": {
-                "dashboard": f"{base}/",
-                "status": f"{base}/api/status",
-                "queues": f"{base}/api/queues",
-            },
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "title": "Review quarterly report",
+                "content": "Please review the Q1 2026 quarterly report and prepare a summary."
+            }
         }
-        self._send_json(200, response)
 
-    def _handle_api_status(self):
-        """GET /api/status - Full system status."""
-        uptime = round(time.time() - START_TIME, 2)
-        checks = {
-            "vault_accessible": VAULT_PATH.exists(),
-            "inbox_exists": (VAULT_PATH / "Inbox").exists(),
-            "needs_action_exists": (VAULT_PATH / "Needs_Action").exists(),
-            "orchestrator_config": Path("orchestrator.py").exists(),
-        }
-        queues = {k: _count_files(VAULT_PATH / v) for k, v in QUEUE_FOLDERS.items()}
 
-        response = {
-            "status": "operational" if all(checks.values()) else "degraded",
-            "uptime_seconds": uptime,
-            "uptime_human": _format_uptime(uptime),
-            "version": os.getenv("APP_VERSION", "1.0.0"),
-            "environment": "production" if os.getenv("DEV_MODE", "true") != "true" else "development",
-            "vault_path": str(VAULT_PATH),
-            "system_checks": checks,
-            "queues": queues,
-            "total_items": sum(queues.values()),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        self._send_json(200, response)
+# =========================================
+# Helpers
+# =========================================
+def _count_files(directory: Path) -> int:
+    if not directory.exists():
+        return 0
+    return len(list(directory.glob("*.md")))
 
-    def _handle_api_metrics(self):
-        """GET /api/metrics - Queue sizes and uptime."""
-        uptime = round(time.time() - START_TIME, 2)
-        queues = {k: _count_files(VAULT_PATH / v) for k, v in QUEUE_FOLDERS.items()}
-        response = {
-            "uptime_seconds": uptime,
-            "queue_sizes": queues,
-            "total_items": sum(queues.values()),
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        self._send_json(200, response)
 
-    def _handle_api_queues(self):
-        """GET /api/queues - All queue names and counts."""
-        queues = []
-        for key, folder in QUEUE_FOLDERS.items():
-            path = VAULT_PATH / folder
-            count = _count_files(path)
-            queues.append({
-                "name": key,
-                "folder": folder,
-                "count": count,
-                "detail_url": f"/api/queue/{key}",
-            })
-        self._send_json(200, {"queues": queues})
+def _format_uptime(seconds: float) -> str:
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    return f"{h}h {m}m {s}s"
 
-    def _handle_api_queue_detail(self, queue_name):
-        """GET /api/queue/{name} - List items in a specific queue."""
-        if queue_name not in QUEUE_FOLDERS:
-            self._send_json(404, {
-                "error": f"Queue '{queue_name}' not found",
-                "available_queues": list(QUEUE_FOLDERS.keys()),
-            })
-            return
 
-        folder = VAULT_PATH / QUEUE_FOLDERS[queue_name]
-        items = []
-        if folder.exists():
-            for f in sorted(folder.glob("*.md"), key=lambda x: x.stat().st_mtime, reverse=True):
-                stat = f.stat()
-                # Read first 200 chars as preview
-                try:
-                    preview = f.read_text(encoding="utf-8")[:200]
-                except Exception:
-                    preview = "(unable to read)"
-                items.append({
-                    "filename": f.name,
-                    "size_bytes": stat.st_size,
-                    "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
-                    "created": datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc).isoformat(),
-                    "preview": preview,
-                })
+# =========================================
+# Frontend - Dashboard
+# =========================================
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def dashboard():
+    """Live HTML dashboard - auto-refreshes every 30s."""
+    uptime = round(time.time() - START_TIME, 2)
+    hours = int(uptime // 3600)
+    minutes = int((uptime % 3600) // 60)
 
-        self._send_json(200, {
-            "queue": queue_name,
-            "folder": QUEUE_FOLDERS[queue_name],
-            "count": len(items),
-            "items": items,
-        })
+    queues = {k: _count_files(VAULT_PATH / v) for k, v in QUEUE_FOLDERS.items()}
+    checks = {
+        "Vault": VAULT_PATH.exists(),
+        "Inbox": (VAULT_PATH / "Inbox").exists(),
+        "Orchestrator": Path("orchestrator.py").exists(),
+    }
+    all_ok = all(checks.values())
 
-    def _handle_api_config(self):
-        """GET /api/config - Runtime configuration (no secrets)."""
-        response = {
-            "vault_path": str(VAULT_PATH),
-            "dev_mode": os.getenv("DEV_MODE", "true"),
-            "dry_run": os.getenv("DRY_RUN", "true"),
-            "environment": os.getenv("ENVIRONMENT", "development"),
-            "version": os.getenv("APP_VERSION", "1.0.0"),
-            "port": os.getenv("PORT", os.getenv("HEALTH_PORT", "8080")),
-            "integrations": {
-                "google": bool(os.getenv("GOOGLE_CLIENT_ID")),
-                "twitter": bool(os.getenv("TWITTER_API_KEY")),
-                "facebook": bool(os.getenv("FACEBOOK_ACCESS_TOKEN")),
-                "linkedin": bool(os.getenv("LINKEDIN_ACCESS_TOKEN")),
-                "instagram": bool(os.getenv("INSTAGRAM_ACCESS_TOKEN")),
-                "whatsapp": bool(os.getenv("WHATSAPP_ACCESS_TOKEN")),
-                "odoo": bool(os.getenv("ODOO_URL")),
-            },
-        }
-        self._send_json(200, response)
+    queue_rows = "".join(
+        f'<tr><td>{QUEUE_FOLDERS[k]}</td><td style="text-align:center;font-weight:bold">{v}</td></tr>'
+        for k, v in queues.items()
+    )
+    check_rows = "".join(
+        f'<tr><td>{name}</td><td style="text-align:center">'
+        f'{"&#9989;" if ok else "&#10060;"}</td></tr>'
+        for name, ok in checks.items()
+    )
 
-    def _handle_api_logs(self):
-        """GET /api/logs - Recent log entries."""
-        logs_dir = VAULT_PATH / "Logs"
-        entries = []
-        if logs_dir.exists():
-            # Find most recent log files
-            log_files = sorted(logs_dir.rglob("*.log"), key=lambda x: x.stat().st_mtime, reverse=True)[:3]
-            for lf in log_files:
-                try:
-                    lines = lf.read_text(encoding="utf-8").strip().split("\n")
-                    # Last 20 lines
-                    entries.append({
-                        "file": str(lf.relative_to(VAULT_PATH)),
-                        "recent_lines": lines[-20:],
-                    })
-                except Exception:
-                    pass
-
-        self._send_json(200, {"log_files": entries, "count": len(entries)})
-
-    def _handle_api_submit_task(self):
-        """POST /api/inbox - Submit a new task to Inbox."""
-        try:
-            content_length = int(self.headers.get("Content-Length", 0))
-            if content_length == 0:
-                self._send_json(400, {"error": "Empty request body. Send JSON: {title, content}"})
-                return
-
-            body = self.rfile.read(content_length).decode("utf-8")
-            data = json.loads(body)
-
-            title = data.get("title", "").strip()
-            content = data.get("content", "").strip()
-
-            if not title:
-                self._send_json(400, {"error": "Missing 'title' field"})
-                return
-
-            # Create task file in Inbox
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-            safe_title = "".join(c if c.isalnum() or c in "-_ " else "" for c in title).strip().replace(" ", "_")
-            filename = f"{timestamp}_{safe_title}.md"
-            filepath = VAULT_PATH / "Inbox" / filename
-
-            task_content = f"""---
-title: {title}
-created: {datetime.now(timezone.utc).isoformat()}
-source: api
-status: new
----
-
-# {title}
-
-{content if content else "No description provided."}
-"""
-            filepath.write_text(task_content, encoding="utf-8")
-
-            self._send_json(201, {
-                "status": "created",
-                "filename": filename,
-                "queue": "inbox",
-                "message": f"Task '{title}' submitted to Inbox",
-            })
-
-        except json.JSONDecodeError:
-            self._send_json(400, {"error": "Invalid JSON body"})
-        except Exception as e:
-            self._send_json(500, {"error": str(e)})
-
-    # =========================================
-    # Health Probes
-    # =========================================
-
-    def _handle_health(self):
-        response = {
-            "status": "healthy",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "uptime_seconds": round(time.time() - START_TIME, 2),
-            "version": os.getenv("APP_VERSION", "1.0.0"),
-        }
-        self._send_json(200, response)
-
-    def _handle_readiness(self):
-        checks = {
-            "vault_accessible": VAULT_PATH.exists(),
-            "inbox_exists": (VAULT_PATH / "Inbox").exists(),
-            "needs_action_exists": (VAULT_PATH / "Needs_Action").exists(),
-            "orchestrator_config": Path("orchestrator.py").exists(),
-        }
-        all_ready = all(checks.values())
-        response = {
-            "status": "ready" if all_ready else "not_ready",
-            "checks": checks,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        self._send_json(200 if all_ready else 503, response)
-
-    # =========================================
-    # Frontend Dashboard
-    # =========================================
-
-    def _handle_dashboard(self):
-        uptime = round(time.time() - START_TIME, 2)
-        hours = int(uptime // 3600)
-        minutes = int((uptime % 3600) // 60)
-
-        queues = {k: _count_files(VAULT_PATH / v) for k, v in QUEUE_FOLDERS.items()}
-        checks = {
-            "Vault": VAULT_PATH.exists(),
-            "Inbox": (VAULT_PATH / "Inbox").exists(),
-            "Orchestrator": Path("orchestrator.py").exists(),
-        }
-        all_ok = all(checks.values())
-
-        queue_rows = "".join(
-            f'<tr><td>{QUEUE_FOLDERS[k]}</td><td style="text-align:center;font-weight:bold">{v}</td></tr>'
-            for k, v in queues.items()
-        )
-        check_rows = "".join(
-            f'<tr><td>{name}</td><td style="text-align:center">'
-            f'{"&#9989;" if ok else "&#10060;"}</td></tr>'
-            for name, ok in checks.items()
-        )
-
-        base = f"https://{self.headers.get('Host', 'localhost')}"
-
-        html = f"""<!DOCTYPE html>
+    html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -377,6 +166,7 @@ status: new
             font-weight:600; margin-left:8px; vertical-align:middle; }}
   .badge-get {{ background:#1e3a5f; color:#7dd3fc; }}
   .badge-post {{ background:#3b1f2b; color:#fda4af; }}
+  .badge-swagger {{ background:#2d1b4e; color:#c084fc; }}
   .footer {{ text-align:center; color:#475569; font-size:0.8rem; margin-top:32px; }}
 </style>
 </head>
@@ -415,9 +205,17 @@ status: new
   </div>
 
   <div class="card">
+    <h2>Swagger UI & Docs</h2>
+    <div class="endpoints">
+      <a href="/docs">/docs <span class="badge badge-swagger">SWAGGER</span> - Interactive API Testing</a>
+      <a href="/redoc">/redoc <span class="badge badge-swagger">REDOC</span> - API Documentation</a>
+      <a href="/openapi.json">/openapi.json <span class="badge badge-get">GET</span> - OpenAPI Schema</a>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Backend API</h2>
     <div class="endpoints">
-      <a href="/api">/api <span class="badge badge-get">GET</span> - All endpoints index</a>
       <a href="/api/status">/api/status <span class="badge badge-get">GET</span> - Full system status</a>
       <a href="/api/queues">/api/queues <span class="badge badge-get">GET</span> - All queues</a>
       <a href="/api/queue/inbox">/api/queue/inbox <span class="badge badge-get">GET</span> - Inbox items</a>
@@ -437,48 +235,218 @@ status: new
     </div>
   </div>
 
-  <p class="footer">v{os.getenv("APP_VERSION", "1.0.0")} &middot; Auto-refreshes every 30s &middot; {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")}</p>
+  <p class="footer">v{os.getenv("APP_VERSION", "1.0.0")} &middot; FastAPI + Swagger &middot; Auto-refreshes every 30s</p>
 </div>
 </body>
 </html>"""
-
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(html.encode())
-
-    # =========================================
-    # Helpers
-    # =========================================
-
-    def _send_json(self, status_code, data):
-        self.send_response(status_code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(json.dumps(data, indent=2).encode())
-
-    def log_message(self, format, *args):
-        pass
+    return HTMLResponse(content=html)
 
 
-def _count_files(directory: Path) -> int:
-    if not directory.exists():
-        return 0
-    return len(list(directory.glob("*.md")))
+# =========================================
+# Health Probes
+# =========================================
+@app.get("/health", tags=["Health"])
+async def health_check():
+    """Liveness probe - is the service alive?"""
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "uptime_seconds": round(time.time() - START_TIME, 2),
+        "version": os.getenv("APP_VERSION", "1.0.0"),
+    }
 
 
-def _format_uptime(seconds):
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    return f"{h}h {m}m {s}s"
+@app.get("/ready", tags=["Health"])
+async def readiness_check():
+    """Readiness probe - is the service ready to handle requests?"""
+    checks = {
+        "vault_accessible": VAULT_PATH.exists(),
+        "inbox_exists": (VAULT_PATH / "Inbox").exists(),
+        "needs_action_exists": (VAULT_PATH / "Needs_Action").exists(),
+        "orchestrator_config": Path("orchestrator.py").exists(),
+    }
+    all_ready = all(checks.values())
+    return {
+        "status": "ready" if all_ready else "not_ready",
+        "checks": checks,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
 
 
+# =========================================
+# Backend API
+# =========================================
+@app.get("/api/status", tags=["System"])
+async def system_status():
+    """Full system status - health, queues, checks, uptime."""
+    uptime = round(time.time() - START_TIME, 2)
+    checks = {
+        "vault_accessible": VAULT_PATH.exists(),
+        "inbox_exists": (VAULT_PATH / "Inbox").exists(),
+        "needs_action_exists": (VAULT_PATH / "Needs_Action").exists(),
+        "orchestrator_config": Path("orchestrator.py").exists(),
+    }
+    queues = {k: _count_files(VAULT_PATH / v) for k, v in QUEUE_FOLDERS.items()}
+    return {
+        "status": "operational" if all(checks.values()) else "degraded",
+        "uptime_seconds": uptime,
+        "uptime_human": _format_uptime(uptime),
+        "version": os.getenv("APP_VERSION", "1.0.0"),
+        "environment": "production" if os.getenv("DEV_MODE", "true") != "true" else "development",
+        "vault_path": str(VAULT_PATH),
+        "system_checks": checks,
+        "queues": queues,
+        "total_items": sum(queues.values()),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/metrics", tags=["System"])
+async def metrics():
+    """Queue sizes and uptime metrics."""
+    uptime = round(time.time() - START_TIME, 2)
+    queues = {k: _count_files(VAULT_PATH / v) for k, v in QUEUE_FOLDERS.items()}
+    return {
+        "uptime_seconds": uptime,
+        "queue_sizes": queues,
+        "total_items": sum(queues.values()),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/queues", tags=["Queues"])
+async def list_queues():
+    """List all queues with item counts."""
+    queues = []
+    for key, folder in QUEUE_FOLDERS.items():
+        count = _count_files(VAULT_PATH / folder)
+        queues.append({
+            "name": key,
+            "folder": folder,
+            "count": count,
+            "detail_url": f"/api/queue/{key}",
+        })
+    return {"queues": queues}
+
+
+@app.get("/api/queue/{queue_name}", tags=["Queues"])
+async def queue_detail(queue_name: str):
+    """List all items in a specific queue with file previews.
+
+    Available queues: `inbox`, `needs_action`, `pending_approval`, `approved`, `in_progress`, `done`, `rejected`
+    """
+    if queue_name not in QUEUE_FOLDERS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Queue '{queue_name}' not found. Available: {list(QUEUE_FOLDERS.keys())}"
+        )
+
+    folder = VAULT_PATH / QUEUE_FOLDERS[queue_name]
+    items = []
+    if folder.exists():
+        for f in sorted(folder.glob("*.md"), key=lambda x: x.stat().st_mtime, reverse=True):
+            stat = f.stat()
+            try:
+                preview = f.read_text(encoding="utf-8")[:200]
+            except Exception:
+                preview = "(unable to read)"
+            items.append({
+                "filename": f.name,
+                "size_bytes": stat.st_size,
+                "modified": datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc).isoformat(),
+                "created": datetime.fromtimestamp(stat.st_ctime, tz=timezone.utc).isoformat(),
+                "preview": preview,
+            })
+
+    return {
+        "queue": queue_name,
+        "folder": QUEUE_FOLDERS[queue_name],
+        "count": len(items),
+        "items": items,
+    }
+
+
+@app.post("/api/inbox", tags=["Tasks"], status_code=201)
+async def submit_task(task: TaskSubmit):
+    """Submit a new task to the Inbox queue.
+
+    The task will be created as a markdown file in the Inbox folder
+    and picked up by the orchestrator for processing.
+    """
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    safe_title = "".join(c if c.isalnum() or c in "-_ " else "" for c in task.title).strip().replace(" ", "_")
+    filename = f"{timestamp}_{safe_title}.md"
+    filepath = VAULT_PATH / "Inbox" / filename
+
+    task_content = f"""---
+title: {task.title}
+created: {datetime.now(timezone.utc).isoformat()}
+source: api
+status: new
+---
+
+# {task.title}
+
+{task.content if task.content else "No description provided."}
+"""
+    filepath.write_text(task_content, encoding="utf-8")
+
+    return {
+        "status": "created",
+        "filename": filename,
+        "queue": "inbox",
+        "message": f"Task '{task.title}' submitted to Inbox",
+    }
+
+
+@app.get("/api/config", tags=["System"])
+async def runtime_config():
+    """Current runtime configuration (secrets are never exposed)."""
+    return {
+        "vault_path": str(VAULT_PATH),
+        "dev_mode": os.getenv("DEV_MODE", "true"),
+        "dry_run": os.getenv("DRY_RUN", "true"),
+        "environment": os.getenv("ENVIRONMENT", "development"),
+        "version": os.getenv("APP_VERSION", "1.0.0"),
+        "port": os.getenv("PORT", os.getenv("HEALTH_PORT", "8080")),
+        "integrations": {
+            "google": bool(os.getenv("GOOGLE_CLIENT_ID")),
+            "twitter": bool(os.getenv("TWITTER_API_KEY")),
+            "facebook": bool(os.getenv("FACEBOOK_ACCESS_TOKEN")),
+            "linkedin": bool(os.getenv("LINKEDIN_ACCESS_TOKEN")),
+            "instagram": bool(os.getenv("INSTAGRAM_ACCESS_TOKEN")),
+            "whatsapp": bool(os.getenv("WHATSAPP_ACCESS_TOKEN")),
+            "odoo": bool(os.getenv("ODOO_URL")),
+        },
+    }
+
+
+@app.get("/api/logs", tags=["System"])
+async def recent_logs():
+    """Recent system log entries from the Logs directory."""
+    logs_dir = VAULT_PATH / "Logs"
+    entries = []
+    if logs_dir.exists():
+        log_files = sorted(logs_dir.rglob("*.log"), key=lambda x: x.stat().st_mtime, reverse=True)[:3]
+        for lf in log_files:
+            try:
+                lines = lf.read_text(encoding="utf-8").strip().split("\n")
+                entries.append({
+                    "file": str(lf.relative_to(VAULT_PATH)),
+                    "recent_lines": lines[-20:],
+                })
+            except Exception:
+                pass
+    return {"log_files": entries, "count": len(entries)}
+
+
+# =========================================
+# Server runner (used by start_services.py)
+# =========================================
 def run_health_server(port: int = 8080):
-    server = HTTPServer(("0.0.0.0", port), VaultAPIHandler)
-    print(f"Health check server running on port {port}")
-    server.serve_forever()
+    """Start FastAPI with uvicorn."""
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
 
 
 if __name__ == "__main__":

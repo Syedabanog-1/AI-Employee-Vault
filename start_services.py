@@ -1,12 +1,13 @@
 """
 Service Starter for AI Employee Vault
-Launches orchestrator + health check server in parallel.
+Launches orchestrator + FastAPI web server in parallel.
 """
 
 import os
 import sys
 import threading
 import logging
+import uvicorn
 from pathlib import Path
 
 logging.basicConfig(
@@ -16,13 +17,15 @@ logging.basicConfig(
 logger = logging.getLogger("start_services")
 
 
-def start_health_server():
-    """Start the health check HTTP server in a background thread."""
-    from healthcheck import run_health_server
-
+def start_web_server():
+    """Start the FastAPI web server with Swagger docs."""
+    from healthcheck import app
+    
     # Railway injects PORT env var; fall back to HEALTH_PORT or 8080
     port = int(os.getenv("PORT", os.getenv("HEALTH_PORT", "8080")))
-    run_health_server(port)
+    
+    # Run the FastAPI app with uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
 
 
 def start_orchestrator():
@@ -39,13 +42,14 @@ def main():
     logger.info(f"Environment: {'production' if not os.getenv('DEV_MODE', 'true') == 'true' else 'development'}")
     logger.info(f"Vault path: {os.getenv('VAULT_PATH', '.')}")
 
-    # Start health check server in background thread
-    health_thread = threading.Thread(target=start_health_server, daemon=True)
-    health_thread.start()
-    logger.info("Health check server started")
+    # Start orchestrator in background thread
+    orchestrator_thread = threading.Thread(target=start_orchestrator, daemon=True)
+    orchestrator_thread.start()
+    logger.info("Orchestrator started in background")
 
-    # Start orchestrator in main thread
-    start_orchestrator()
+    # Start web server in main thread (this will block)
+    logger.info("Starting web server with Swagger docs...")
+    start_web_server()
 
 
 if __name__ == "__main__":
