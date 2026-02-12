@@ -20,7 +20,8 @@ def start_health_server():
     """Start the health check HTTP server in a background thread."""
     from healthcheck import run_health_server
 
-    port = int(os.getenv("HEALTH_PORT", "8080"))
+    # Railway injects PORT env var; fall back to HEALTH_PORT or 8080
+    port = int(os.getenv("PORT", os.getenv("HEALTH_PORT", "8080")))
     run_health_server(port)
 
 

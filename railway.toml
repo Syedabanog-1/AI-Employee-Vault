@@ -1,17 +1,9 @@
-# Railway.app Deployment Configuration
-# Alternative cloud deployment option (simpler than AWS)
-
 [build]
 builder = "dockerfile"
 dockerfilePath = "Dockerfile"
 
 [deploy]
-startCommand = "python start_services.py"
 healthcheckPath = "/health"
-healthcheckTimeout = 30
+healthcheckTimeout = 60
 restartPolicyType = "on_failure"
-restartPolicyMaxRetries = 5
-
-[[services]]
-name = "ai-employee-vault"
-internalPort = 8080
+restartPolicyMaxRetries = 3

@@ -5,16 +5,12 @@
 # Environment files (secrets)
 .env
 .env.*
-*.env
 
 # Python artifacts
 __pycache__
 *.pyc
 *.pyo
 *.egg-info
-.eggs
-dist
-build
 venv
 env
 .venv
@@ -22,8 +18,6 @@ env
 # IDE
 .vscode
 .idea
-*.swp
-*.swo
 
 # OS files
 .DS_Store
@@ -34,30 +28,31 @@ Thumbs.db
 *.zip
 *.tar.gz
 
-# Documentation (not needed in container)
-*.md
-!Company_Handbook.md
-!Business_Goals.md
-!Dashboard.md
-
-# Specify dev tools
-.specify/scripts
-.specify/templates
+# Dev/spec files not needed in container
+.specify/
 history/
 specs/
+Bronze_Phase/
+coverage/
+.pytest_cache
+nul
 
-# Node modules (rebuilt in container)
+# Deploy configs (not needed inside container)
+deploy/
+.github/
+docker-compose*.yml
+railway.toml
+render.yaml
+DEPLOYMENT.md
+CLAUDE.md
+
+# Node modules (copied selectively)
 node_modules
 
 # Test files
 test_*
 *_test.py
-coverage/
-.pytest_cache
 
 # Logs (generated at runtime)
 Logs/
 *.log
-
-# Null file
-nul

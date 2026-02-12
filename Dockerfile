@@ -1,55 +1,39 @@
 # ============================================
-# AI Employee Vault - Multi-Stage Dockerfile
-# ============================================
-# Stage 1: Node.js dependencies for MCP servers
-# Stage 2: Python application with all services
+# AI Employee Vault - Dockerfile
+# Optimized for Railway / Cloud deployment
 # ============================================
 
-# --- Stage 1: Build Node.js MCP servers ---
-FROM node:20-alpine AS node-builder
+FROM python:3.12-slim
 
-WORKDIR /app/mcp-servers/email-mcp
-COPY mcp-servers/email-mcp/package*.json ./
-RUN npm ci --production
-
-# --- Stage 2: Python application ---
-FROM python:3.13-slim AS production
-
-# System metadata
 LABEL maintainer="AI Employee Vault"
 LABEL version="1.0.0"
-LABEL description="AI Employee Vault - Autonomous Personal Assistant"
 
-# Prevent Python from writing .pyc files and enable unbuffered output
+# Prevent Python from writing .pyc and enable unbuffered output
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PORT=8080 \
+    VAULT_PATH=/app
 
-# Install system dependencies
+# Install minimal system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
-    nodejs \
-    npm \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for security
-RUN groupadd -r aiemployee && useradd -r -g aiemployee -m -s /bin/bash aiemployee
-
-# Set working directory
 WORKDIR /app
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy Node.js dependencies from builder stage
-COPY --from=node-builder /app/mcp-servers/email-mcp/node_modules /app/mcp-servers/email-mcp/node_modules
+# Install Python dependencies (slim set - no playwright/dev tools)
+COPY requirements.deploy.txt ./
+RUN pip install --no-cache-dir -r requirements.deploy.txt
 
 # Copy application code
-COPY . .
+COPY orchestrator.py start_services.py healthcheck.py ./
+COPY watchers/ ./watchers/
+COPY mcp-servers/ ./mcp-servers/
+COPY Company_Handbook.md Business_Goals.md Dashboard.md ./
+COPY mcp-config.json ./
 
 # Create vault directory structure
 RUN mkdir -p \
@@ -58,18 +42,10 @@ RUN mkdir -p \
     Logs Accounting Briefings Signals \
     Drop_Folder History
 
-# Set permissions
-RUN chown -R aiemployee:aiemployee /app
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
 
-# Switch to non-root user
-USER aiemployee
+EXPOSE ${PORT}
 
-# Health check endpoint
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python healthcheck.py || exit 1
-
-# Expose health check port
-EXPOSE 8080
-
-# Default command - start orchestrator with health endpoint
 CMD ["python", "start_services.py"]
