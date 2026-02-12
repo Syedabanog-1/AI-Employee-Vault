@@ -1,0 +1,63 @@
+# Git
+.git
+.gitignore
+
+# Environment files (secrets)
+.env
+.env.*
+*.env
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.eggs
+dist
+build
+venv
+env
+.venv
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Archives
+*.rar
+*.zip
+*.tar.gz
+
+# Documentation (not needed in container)
+*.md
+!Company_Handbook.md
+!Business_Goals.md
+!Dashboard.md
+
+# Specify dev tools
+.specify/scripts
+.specify/templates
+history/
+specs/
+
+# Node modules (rebuilt in container)
+node_modules
+
+# Test files
+test_*
+*_test.py
+coverage/
+.pytest_cache
+
+# Logs (generated at runtime)
+Logs/
+*.log
+
+# Null file
+nul

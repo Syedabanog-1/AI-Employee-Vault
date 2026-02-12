@@ -58,3 +58,15 @@ coverage/
 mcp-servers/*/__pycache__/
 mcp-servers/*/__pycache__/
 *.pyc
+
+# Docker
+docker-compose.override.yml
+
+# Deploy secrets (never commit)
+deploy/secrets/
+*.pem
+*.key
+
+# Archives
+*.rar
+*.zip

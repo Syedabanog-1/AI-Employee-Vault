@@ -1,0 +1,85 @@
+{
+  "family": "ai-employee-vault",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "512",
+  "memory": "1024",
+  "executionRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::ACCOUNT_ID:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "orchestrator",
+      "image": "ghcr.io/OWNER/ai-employee-vault:latest",
+      "essential": true,
+      "portMappings": [
+        {
+          "containerPort": 8080,
+          "protocol": "tcp",
+          "appProtocol": "http"
+        }
+      ],
+      "environment": [
+        { "name": "VAULT_PATH", "value": "/app" },
+        { "name": "DEV_MODE", "value": "false" },
+        { "name": "DRY_RUN", "value": "false" },
+        { "name": "HEALTH_PORT", "value": "8080" }
+      ],
+      "secrets": [
+        {
+          "name": "GOOGLE_CLIENT_ID",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:ai-employee/google:client_id::"
+        },
+        {
+          "name": "GOOGLE_CLIENT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:ai-employee/google:client_secret::"
+        },
+        {
+          "name": "TWITTER_API_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:ai-employee/twitter:api_key::"
+        },
+        {
+          "name": "FACEBOOK_ACCESS_TOKEN",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:ai-employee/facebook:access_token::"
+        }
+      ],
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python healthcheck.py || exit 1"],
+        "interval": 30,
+        "timeout": 10,
+        "retries": 3,
+        "startPeriod": 15
+      },
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/ai-employee-vault",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "orchestrator",
+          "awslogs-create-group": "true"
+        }
+      },
+      "mountPoints": [
+        {
+          "sourceVolume": "vault-data",
+          "containerPath": "/app/vault-data",
+          "readOnly": false
+        }
+      ]
+    }
+  ],
+  "volumes": [
+    {
+      "name": "vault-data",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "fs-PLACEHOLDER",
+        "rootDirectory": "/",
+        "transitEncryption": "ENABLED"
+      }
+    }
+  ],
+  "tags": [
+    { "key": "Project", "value": "AI-Employee-Vault" },
+    { "key": "Environment", "value": "production" },
+    { "key": "ManagedBy", "value": "github-actions" }
+  ]
+}
