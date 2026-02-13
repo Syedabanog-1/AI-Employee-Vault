@@ -20,7 +20,26 @@ from pydantic import BaseModel, field_validator
 # Config
 # =========================================
 START_TIME = time.time()
-VAULT_PATH = Path(os.getenv("VAULT_PATH", "/app"))
+
+# Determine the correct vault path at startup - try different possible locations
+possible_paths = [
+    Path(os.getenv("VAULT_PATH", "/app/vault")),
+    Path("/app/vault"),
+    Path("/app"),
+    Path(".")
+]
+
+# Find the correct vault path that exists or create it
+VAULT_PATH = None
+for path in possible_paths:
+    if path.exists():
+        VAULT_PATH = path
+        break
+
+# If none exist, use the default and create it
+if VAULT_PATH is None:
+    VAULT_PATH = Path(os.getenv("VAULT_PATH", "/app/vault"))
+    VAULT_PATH.mkdir(parents=True, exist_ok=True)
 
 # Ensure vault directories exist at startup
 for folder in ["Inbox", "Needs_Action", "Plans", "Pending_Approval", "Approved", "In_Progress", "Done", "Rejected", "Logs", "Briefings", "Signals", "Updates", "Drop_Folder", "History", "Accounting"]:
@@ -135,21 +154,41 @@ async def dashboard():
     hours = int(uptime // 3600)
     minutes = int((uptime % 3600) // 60)
 
+    # Determine the correct vault path - try different possible locations
+    possible_paths = [
+        Path(os.getenv("VAULT_PATH", "/app/vault")),
+        Path("/app/vault"),
+        Path("/app"),
+        Path(".")
+    ]
+    
+    # Find the correct vault path that exists or create it
+    vault_path = None
+    for path in possible_paths:
+        if path.exists():
+            vault_path = path
+            break
+    
+    # If none exist, use the default and create it
+    if vault_path is None:
+        vault_path = Path(os.getenv("VAULT_PATH", "/app/vault"))
+        vault_path.mkdir(parents=True, exist_ok=True)
+
     # Ensure vault directories exist
     for folder in QUEUE_FOLDERS.values():
-        (VAULT_PATH / folder).mkdir(parents=True, exist_ok=True)
+        (vault_path / folder).mkdir(parents=True, exist_ok=True)
     
     # Also ensure other important directories exist
-    (VAULT_PATH / "Logs").mkdir(parents=True, exist_ok=True)
-    (VAULT_PATH / "Briefings").mkdir(parents=True, exist_ok=True)
-    (VAULT_PATH / "Signals").mkdir(parents=True, exist_ok=True)
-    (VAULT_PATH / "Updates").mkdir(parents=True, exist_ok=True)
-    (VAULT_PATH / "Drop_Folder").mkdir(parents=True, exist_ok=True)
-    (VAULT_PATH / "History").mkdir(parents=True, exist_ok=True)
-    (VAULT_PATH / "Accounting").mkdir(parents=True, exist_ok=True)
+    (vault_path / "Logs").mkdir(parents=True, exist_ok=True)
+    (vault_path / "Briefings").mkdir(parents=True, exist_ok=True)
+    (vault_path / "Signals").mkdir(parents=True, exist_ok=True)
+    (vault_path / "Updates").mkdir(parents=True, exist_ok=True)
+    (vault_path / "Drop_Folder").mkdir(parents=True, exist_ok=True)
+    (vault_path / "History").mkdir(parents=True, exist_ok=True)
+    (vault_path / "Accounting").mkdir(parents=True, exist_ok=True)
 
     # Create Dashboard.md if it doesn't exist
-    dashboard_path = VAULT_PATH / "Dashboard.md"
+    dashboard_path = vault_path / "Dashboard.md"
     if not dashboard_path.exists():
         from datetime import datetime
         dashboard_content = f"""# AI Employee Dashboard
@@ -174,11 +213,11 @@ async def dashboard():
 """
         dashboard_path.write_text(dashboard_content)
 
-    queues = {k: _count_files(VAULT_PATH / v) for k, v in QUEUE_FOLDERS.items()}
+    queues = {k: _count_files(vault_path / v) for k, v in QUEUE_FOLDERS.items()}
     checks = {
-        "Vault": VAULT_PATH.exists(),
-        "Inbox": (VAULT_PATH / "Inbox").exists(),
-        "Orchestrator": Path("orchestrator.py").exists(),
+        "Vault": vault_path.exists(),
+        "Inbox": (vault_path / "Inbox").exists(),
+        "Orchestrator": Path("orchestrator.py").exists() if Path("orchestrator.py").exists() else Path("/app/orchestrator.py").exists(),
     }
     all_ok = all(checks.values())
 
@@ -323,15 +362,35 @@ async def health_check():
 @app.get("/ready", tags=["Health"])
 async def readiness_check():
     """Readiness probe - is the service ready to handle requests?"""
+    # Determine the correct vault path - try different possible locations
+    possible_paths = [
+        Path(os.getenv("VAULT_PATH", "/app/vault")),
+        Path("/app/vault"),
+        Path("/app"),
+        Path(".")
+    ]
+    
+    # Find the correct vault path that exists or create it
+    vault_path = None
+    for path in possible_paths:
+        if path.exists():
+            vault_path = path
+            break
+    
+    # If none exist, use the default and create it
+    if vault_path is None:
+        vault_path = Path(os.getenv("VAULT_PATH", "/app/vault"))
+        vault_path.mkdir(parents=True, exist_ok=True)
+    
     # Ensure required directories exist
-    (VAULT_PATH / "Inbox").mkdir(parents=True, exist_ok=True)
-    (VAULT_PATH / "Needs_Action").mkdir(parents=True, exist_ok=True)
+    (vault_path / "Inbox").mkdir(parents=True, exist_ok=True)
+    (vault_path / "Needs_Action").mkdir(parents=True, exist_ok=True)
     
     checks = {
-        "vault_accessible": VAULT_PATH.exists(),
-        "inbox_exists": (VAULT_PATH / "Inbox").exists(),
-        "needs_action_exists": (VAULT_PATH / "Needs_Action").exists(),
-        "orchestrator_config": Path("orchestrator.py").exists(),
+        "vault_accessible": vault_path.exists(),
+        "inbox_exists": (vault_path / "Inbox").exists(),
+        "needs_action_exists": (vault_path / "Needs_Action").exists(),
+        "orchestrator_config": Path("orchestrator.py").exists() if Path("orchestrator.py").exists() else Path("/app/orchestrator.py").exists(),
     }
     all_ready = all(checks.values())
     return {
@@ -347,25 +406,45 @@ async def readiness_check():
 @app.get("/api/status", tags=["System"])
 async def system_status():
     """Full system status - health, queues, checks, uptime."""
+    # Determine the correct vault path - try different possible locations
+    possible_paths = [
+        Path(os.getenv("VAULT_PATH", "/app/vault")),
+        Path("/app/vault"),
+        Path("/app"),
+        Path(".")
+    ]
+    
+    # Find the correct vault path that exists or create it
+    vault_path = None
+    for path in possible_paths:
+        if path.exists():
+            vault_path = path
+            break
+    
+    # If none exist, use the default and create it
+    if vault_path is None:
+        vault_path = Path(os.getenv("VAULT_PATH", "/app/vault"))
+        vault_path.mkdir(parents=True, exist_ok=True)
+    
     # Ensure required directories exist
     for folder in QUEUE_FOLDERS.values():
-        (VAULT_PATH / folder).mkdir(parents=True, exist_ok=True)
+        (vault_path / folder).mkdir(parents=True, exist_ok=True)
     
     uptime = round(time.time() - START_TIME, 2)
     checks = {
-        "vault_accessible": VAULT_PATH.exists(),
-        "inbox_exists": (VAULT_PATH / "Inbox").exists(),
-        "needs_action_exists": (VAULT_PATH / "Needs_Action").exists(),
-        "orchestrator_config": Path("orchestrator.py").exists(),
+        "vault_accessible": vault_path.exists(),
+        "inbox_exists": (vault_path / "Inbox").exists(),
+        "needs_action_exists": (vault_path / "Needs_Action").exists(),
+        "orchestrator_config": Path("orchestrator.py").exists() if Path("orchestrator.py").exists() else Path("/app/orchestrator.py").exists(),
     }
-    queues = {k: _count_files(VAULT_PATH / v) for k, v in QUEUE_FOLDERS.items()}
+    queues = {k: _count_files(vault_path / v) for k, v in QUEUE_FOLDERS.items()}
     return {
         "status": "operational" if all(checks.values()) else "degraded",
         "uptime_seconds": uptime,
         "uptime_human": _format_uptime(uptime),
         "version": os.getenv("APP_VERSION", "1.0.0"),
         "environment": "production" if os.getenv("DEV_MODE", "true") != "true" else "development",
-        "vault_path": str(VAULT_PATH),
+        "vault_path": str(vault_path),
         "system_checks": checks,
         "queues": queues,
         "total_items": sum(queues.values()),
