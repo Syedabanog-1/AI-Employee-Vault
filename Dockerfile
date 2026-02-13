@@ -31,8 +31,8 @@ COPY requirements.deploy.txt ./
 RUN pip install --no-cache-dir -r requirements.deploy.txt
 
 # Install platinum phase dependencies if they exist
-COPY Platinum_Phase/requirements.txt /tmp/platinum-requirements.txt || echo "No platinum requirements found"
-RUN if [ -f /tmp/platinum-requirements.txt ]; then pip install --no-cache-dir -r /tmp/platinum-requirements.txt; fi
+COPY Platinum_Phase/requirements.txt /tmp/platinum-requirements.txt
+RUN if [ -f /tmp/platinum-requirements.txt ]; then pip install --no-cache-dir -r /tmp/platinum-requirements.txt; else echo "No platinum requirements found"; fi
 
 # Copy application code
 COPY . .
