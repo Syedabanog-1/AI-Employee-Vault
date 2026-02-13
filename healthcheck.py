@@ -83,6 +83,17 @@ class TaskSubmit(BaseModel):
             }
         }
 
+    def model_post_init(self, __context):
+        """Validate the model after initialization."""
+        if not self.title or not self.title.strip():
+            raise ValueError("Title is required and cannot be empty")
+        if len(self.title.strip()) < 1:
+            raise ValueError("Title must be at least 1 character long")
+        if len(self.title) > 200:
+            raise ValueError("Title cannot exceed 200 characters")
+        if len(self.content) > 5000:
+            raise ValueError("Content cannot exceed 5000 characters")
+
 
 # =========================================
 # Helpers
@@ -109,6 +120,19 @@ async def dashboard():
     uptime = round(time.time() - START_TIME, 2)
     hours = int(uptime // 3600)
     minutes = int((uptime % 3600) // 60)
+
+    # Ensure vault directories exist
+    for folder in QUEUE_FOLDERS.values():
+        (VAULT_PATH / folder).mkdir(parents=True, exist_ok=True)
+    
+    # Also ensure other important directories exist
+    (VAULT_PATH / "Logs").mkdir(parents=True, exist_ok=True)
+    (VAULT_PATH / "Briefings").mkdir(parents=True, exist_ok=True)
+    (VAULT_PATH / "Signals").mkdir(parents=True, exist_ok=True)
+    (VAULT_PATH / "Updates").mkdir(parents=True, exist_ok=True)
+    (VAULT_PATH / "Drop_Folder").mkdir(parents=True, exist_ok=True)
+    (VAULT_PATH / "History").mkdir(parents=True, exist_ok=True)
+    (VAULT_PATH / "Accounting").mkdir(parents=True, exist_ok=True)
 
     queues = {k: _count_files(VAULT_PATH / v) for k, v in QUEUE_FOLDERS.items()}
     checks = {
@@ -259,6 +283,10 @@ async def health_check():
 @app.get("/ready", tags=["Health"])
 async def readiness_check():
     """Readiness probe - is the service ready to handle requests?"""
+    # Ensure required directories exist
+    (VAULT_PATH / "Inbox").mkdir(parents=True, exist_ok=True)
+    (VAULT_PATH / "Needs_Action").mkdir(parents=True, exist_ok=True)
+    
     checks = {
         "vault_accessible": VAULT_PATH.exists(),
         "inbox_exists": (VAULT_PATH / "Inbox").exists(),
@@ -279,6 +307,10 @@ async def readiness_check():
 @app.get("/api/status", tags=["System"])
 async def system_status():
     """Full system status - health, queues, checks, uptime."""
+    # Ensure required directories exist
+    for folder in QUEUE_FOLDERS.values():
+        (VAULT_PATH / folder).mkdir(parents=True, exist_ok=True)
+    
     uptime = round(time.time() - START_TIME, 2)
     checks = {
         "vault_accessible": VAULT_PATH.exists(),
@@ -373,9 +405,15 @@ async def submit_task(task: TaskSubmit):
     The task will be created as a markdown file in the Inbox folder
     and picked up by the orchestrator for processing.
     """
+    # Validate inputs
+    if not task.title or not task.title.strip():
+        raise HTTPException(status_code=400, detail="Title is required and cannot be empty")
+    
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    safe_title = "".join(c if c.isalnum() or c in "-_ " else "" for c in task.title).strip().replace(" ", "_")
-    filename = f"{timestamp}_{safe_title}.md"
+    safe_title = "".join(c if c.isalnum() or c in "-_ " else "_" for c in task.title).strip()
+    if not safe_title:
+        safe_title = "untitled_task"
+    filename = f"{timestamp}_{safe_title[:100]}.md"  # Limit filename length
     filepath = VAULT_PATH / "Inbox" / filename
 
     task_content = f"""---
