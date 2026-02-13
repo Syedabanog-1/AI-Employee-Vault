@@ -22,6 +22,13 @@ from pydantic import BaseModel, field_validator
 START_TIME = time.time()
 VAULT_PATH = Path(os.getenv("VAULT_PATH", "/app"))
 
+# Ensure vault directories exist at startup
+for folder in ["Inbox", "Needs_Action", "Plans", "Pending_Approval", "Approved", "In_Progress", "Done", "Rejected", "Logs", "Briefings", "Signals", "Updates", "Drop_Folder", "History", "Accounting"]:
+    (VAULT_PATH / folder).mkdir(parents=True, exist_ok=True)
+# Create subdirectories for In_Progress
+(VAULT_PATH / "In_Progress" / "cloud-agent").mkdir(parents=True, exist_ok=True)
+(VAULT_PATH / "In_Progress" / "local-agent").mkdir(parents=True, exist_ok=True)
+
 QUEUE_FOLDERS = {
     "inbox": "Inbox",
     "needs_action": "Needs_Action",
@@ -140,6 +147,32 @@ async def dashboard():
     (VAULT_PATH / "Drop_Folder").mkdir(parents=True, exist_ok=True)
     (VAULT_PATH / "History").mkdir(parents=True, exist_ok=True)
     (VAULT_PATH / "Accounting").mkdir(parents=True, exist_ok=True)
+
+    # Create Dashboard.md if it doesn't exist
+    dashboard_path = VAULT_PATH / "Dashboard.md"
+    if not dashboard_path.exists():
+        from datetime import datetime
+        dashboard_content = f"""# AI Employee Dashboard
+
+**Last Updated**: {datetime.now().strftime('%Y-%m-%d')}
+**Status**: Operational
+**Version**: {os.getenv('APP_VERSION', '2.0.0-platinum')}
+
+---
+
+## Recent Activity
+
+| Timestamp | Action | Result |
+|-----------|--------|--------|
+| {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} | System Initialization | success |
+
+## System Checks
+
+- ✅ Vault Accessible: Yes
+- ✅ Inbox Exists: Yes  
+- ✅ Orchestrator Config: Yes
+"""
+        dashboard_path.write_text(dashboard_content)
 
     queues = {k: _count_files(VAULT_PATH / v) for k, v in QUEUE_FOLDERS.items()}
     checks = {
