@@ -14,7 +14,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PORT=8080 \
-    VAULT_PATH=/app
+    VAULT_PATH=/app/vault
 
 # Install minimal system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -39,12 +39,22 @@ COPY . .
 
 # Create vault directory structure
 RUN mkdir -p \
-    Inbox Needs_Action Plans Pending_Approval \
-    Approved In_Progress Done Rejected \
-    Logs Accounting Briefings Signals \
-    Drop_Folder History Updates \
-    In_Progress/cloud-agent \
-    In_Progress/local-agent
+    /app/vault/Inbox \
+    /app/vault/Needs_Action \
+    /app/vault/Plans \
+    /app/vault/Pending_Approval \
+    /app/vault/Approved \
+    /app/vault/In_Progress/cloud-agent \
+    /app/vault/In_Progress/local-agent \
+    /app/vault/Done \
+    /app/vault/Rejected \
+    /app/vault/Logs \
+    /app/vault/Accounting \
+    /app/vault/Briefings \
+    /app/vault/Signals \
+    /app/vault/Updates \
+    /app/vault/Drop_Folder \
+    /app/vault/History
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
@@ -53,5 +63,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
 EXPOSE ${PORT}
 
 # Default to starting the bronze/gold phase services
-# For platinum phase, use: python Platinum_Phase/cloud_agent/start_cloud_agent.py
+# For platinum phase, set AGENT_TYPE=cloud environment variable
 CMD ["python", "start_services.py"]

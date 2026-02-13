@@ -7,3 +7,9 @@ healthcheckPath = "/health"
 healthcheckTimeout = 60
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
+
+[variables]
+AGENT_TYPE = "cloud"
+VAULT_PATH = "/app/vault"
+APP_VERSION = "2.0.0-platinum"
+DEV_MODE = "false"
