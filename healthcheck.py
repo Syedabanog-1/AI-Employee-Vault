@@ -13,7 +13,7 @@ from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 
 # =========================================
@@ -83,16 +83,23 @@ class TaskSubmit(BaseModel):
             }
         }
 
-    def model_post_init(self, __context):
-        """Validate the model after initialization."""
-        if not self.title or not self.title.strip():
-            raise ValueError("Title is required and cannot be empty")
-        if len(self.title.strip()) < 1:
-            raise ValueError("Title must be at least 1 character long")
-        if len(self.title) > 200:
-            raise ValueError("Title cannot exceed 200 characters")
-        if len(self.content) > 5000:
-            raise ValueError("Content cannot exceed 5000 characters")
+    @field_validator('title')
+    @classmethod
+    def validate_title(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Title is required and cannot be empty')
+        if len(v.strip()) < 1:
+            raise ValueError('Title must be at least 1 character long')
+        if len(v) > 200:
+            raise ValueError('Title cannot exceed 200 characters')
+        return v.strip()
+
+    @field_validator('content')
+    @classmethod
+    def validate_content(cls, v):
+        if v and len(v) > 5000:
+            raise ValueError('Content cannot exceed 5000 characters')
+        return v
 
 
 # =========================================
