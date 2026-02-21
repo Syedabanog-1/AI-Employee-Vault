@@ -1,0 +1,37 @@
+###############################################
+# AI Employee Vault - Development Overrides
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+###############################################
+
+services:
+  orchestrator:
+    build:
+      target: production
+    environment:
+      - DEV_MODE=true
+      - DRY_RUN=true
+    volumes:
+      - .:/app
+    ports:
+      - "8080:8080"
+      - "5678:5678"  # Debug port
+
+  email-mcp:
+    environment:
+      - DEV_MODE=true
+    volumes:
+      - ./mcp-servers/email-mcp:/app/mcp-servers/email-mcp
+
+  filesystem-watcher:
+    environment:
+      - DEV_MODE=true
+    volumes:
+      - .:/app
+
+  # Disable nginx and log-collector in dev
+  nginx:
+    profiles:
+      - production
+  log-collector:
+    profiles:
+      - production

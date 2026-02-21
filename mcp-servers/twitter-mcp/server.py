@@ -1,16 +1,60 @@
 #!/usr/bin/env python3
 """
-Twitter MCP Server
-Provides tools for interacting with Twitter through the Model Context Protocol.
+Twitter/X MCP Server
+Provides tools for interacting with Twitter API v2 via Tweepy
+through the Model Context Protocol.
 """
 
 import asyncio
 import logging
+import os
+from datetime import datetime
 from typing import Dict, Any, List
+
 from pydantic import BaseModel, Field
 from mcp.server import Server
 from mcp.types import Tool
-import json
+
+# Load env from .env file if available
+try:
+    from dotenv import load_dotenv
+    from pathlib import Path
+    load_dotenv(Path(__file__).parent.parent.parent / '.env')
+except ImportError:
+    pass
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- Credential loading ---
+TWITTER_API_KEY = os.getenv('TWITTER_API_KEY', '')
+TWITTER_API_SECRET = os.getenv('TWITTER_API_SECRET', '')
+TWITTER_ACCESS_TOKEN = os.getenv('TWITTER_ACCESS_TOKEN', '')
+TWITTER_ACCESS_TOKEN_SECRET = os.getenv('TWITTER_ACCESS_TOKEN_SECRET', '')
+TWITTER_BEARER_TOKEN = os.getenv('TWITTER_BEARER_TOKEN', '')
+DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'
+
+
+def _get_tweepy_client():
+    """Build and return authenticated Tweepy Client (API v2)."""
+    try:
+        import tweepy
+        client = tweepy.Client(
+            bearer_token=TWITTER_BEARER_TOKEN,
+            consumer_key=TWITTER_API_KEY,
+            consumer_secret=TWITTER_API_SECRET,
+            access_token=TWITTER_ACCESS_TOKEN,
+            access_token_secret=TWITTER_ACCESS_TOKEN_SECRET,
+            wait_on_rate_limit=True
+        )
+        return client
+    except ImportError:
+        logger.error("tweepy not installed — run: pip install tweepy")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to create Tweepy client: {e}")
+        return None
 
 
 class TwitterMCP:
@@ -21,21 +65,15 @@ class TwitterMCP:
     def _setup_handlers(self):
         """Setup MCP capability handlers"""
 
-        # Define tools
         create_twitter_post_tool = Tool(
             name="create_twitter_post",
-            description="Create a tweet on the authenticated Twitter account",
-            input_schema={
+            description="Create a tweet on the authenticated Twitter/X account",
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "text": {
-                        "type": "string", 
+                        "type": "string",
                         "description": "Content of the tweet (max 280 characters)"
-                    },
-                    "media_url": {
-                        "type": "string", 
-                        "description": "Optional URL to media to attach to the tweet",
-                        "default": ""
                     }
                 },
                 "required": ["text"]
@@ -44,14 +82,14 @@ class TwitterMCP:
 
         create_twitter_thread_tool = Tool(
             name="create_twitter_thread",
-            description="Create a thread of tweets on the authenticated Twitter account",
-            input_schema={
+            description="Create a thread of tweets on the authenticated Twitter/X account",
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "tweets": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "List of tweet texts in the thread"
+                        "description": "List of tweet texts in the thread (each max 280 chars)"
                     }
                 },
                 "required": ["tweets"]
@@ -61,49 +99,30 @@ class TwitterMCP:
         reply_to_tweet_tool = Tool(
             name="reply_to_tweet",
             description="Reply to an existing tweet",
-            input_schema={
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "tweet_id": {
-                        "type": "string", 
+                        "type": "string",
                         "description": "ID of the tweet to reply to"
                     },
                     "text": {
-                        "type": "string", 
-                        "description": "Content of the reply"
+                        "type": "string",
+                        "description": "Content of the reply (max 280 characters)"
                     }
                 },
                 "required": ["tweet_id", "text"]
             }
         )
 
-        send_twitter_message_tool = Tool(
-            name="send_twitter_message",
-            description="Send a direct message to a Twitter user",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "recipient_username": {
-                        "type": "string", 
-                        "description": "Username of the recipient"
-                    },
-                    "text": {
-                        "type": "string", 
-                        "description": "Message content to send"
-                    }
-                },
-                "required": ["recipient_username", "text"]
-            }
-        )
-
         like_tweet_tool = Tool(
             name="like_tweet",
             description="Like an existing tweet",
-            input_schema={
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "tweet_id": {
-                        "type": "string", 
+                        "type": "string",
                         "description": "ID of the tweet to like"
                     }
                 },
@@ -111,28 +130,15 @@ class TwitterMCP:
             }
         )
 
-        get_twitter_followers_tool = Tool(
-            name="get_twitter_followers",
-            description="Get list of Twitter followers",
-            input_schema={
-                "type": "object",
-                "properties": {},
-            }
-        )
-
-        # Register tools
         @self.server.list_tools()
         async def list_tools() -> List[Tool]:
             return [
                 create_twitter_post_tool,
                 create_twitter_thread_tool,
                 reply_to_tweet_tool,
-                send_twitter_message_tool,
                 like_tweet_tool,
-                get_twitter_followers_tool
             ]
 
-        # Register handlers
         @self.server.call_tool()
         async def call_tool(name: str, arguments: Dict[str, Any]) -> List[Dict[str, Any]]:
             if name == "create_twitter_post":
@@ -144,219 +150,183 @@ class TwitterMCP:
             elif name == "reply_to_tweet":
                 request = TwitterReplyRequest(**arguments)
                 return [await self.reply_to_tweet(request)]
-            elif name == "send_twitter_message":
-                request = TwitterMessageRequest(**arguments)
-                return [await self.send_twitter_message(request)]
             elif name == "like_tweet":
                 request = TwitterLikeRequest(**arguments)
                 return [await self.like_tweet(request)]
-            elif name == "get_twitter_followers":
-                return [await self.get_twitter_followers()]
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
     async def create_twitter_post(self, request) -> Dict[str, Any]:
-        """
-        Create a Twitter post (tweet).
-        
-        Args:
-            request: Contains tweet text and optional media URL
-            
-        Returns:
-            Dict with success status and tweet ID
-        """
-        logger.info(f"Creating Twitter post: {request.text[:50]}...")
-        
-        # In a real implementation, this would connect to Twitter API
-        await asyncio.sleep(0.1)  # Simulate API call
-        
-        result = {
-            "success": True,
-            "text": request.text,
-            "has_media": bool(request.media_url),
-            "timestamp": asyncio.get_event_loop().time(),
-            "tweet_id": f"tw_post_{hash(request.text) % 10000:04d}"
-        }
-        
-        logger.info(f"Twitter post created successfully: {result['tweet_id']}")
-        return result
+        """Create a tweet using Twitter API v2."""
+        logger.info(f"Creating tweet: {request.text[:60]}...")
+
+        if DRY_RUN:
+            logger.info(f"[DRY RUN] Would tweet: '{request.text}'")
+            return {
+                "success": True,
+                "dry_run": True,
+                "text": request.text,
+                "timestamp": datetime.now().isoformat()
+            }
+
+        if not TWITTER_API_KEY:
+            return {"success": False, "error": "Twitter API credentials not configured"}
+
+        client = _get_tweepy_client()
+        if not client:
+            return {"success": False, "error": "Failed to initialize Tweepy client"}
+
+        try:
+            response = client.create_tweet(text=request.text)
+            tweet_id = response.data['id']
+            logger.info(f"Tweet created: {tweet_id}")
+            return {
+                "success": True,
+                "tweet_id": tweet_id,
+                "text": request.text,
+                "url": f"https://twitter.com/i/web/status/{tweet_id}",
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error creating tweet: {e}")
+            return {"success": False, "error": str(e)}
 
     async def create_twitter_thread(self, request) -> Dict[str, Any]:
-        """
-        Create a Twitter thread (series of tweets).
-        
-        Args:
-            request: Contains list of tweet texts
-            
-        Returns:
-            Dict with success status and list of tweet IDs
-        """
+        """Create a Twitter thread by posting tweets as replies to each other."""
         logger.info(f"Creating Twitter thread with {len(request.tweets)} tweets")
-        
-        # In a real implementation, this would connect to Twitter API
-        await asyncio.sleep(0.2)  # Simulate API call
-        
-        tweet_ids = [f"tw_thread_{i}_{hash(tweet) % 10000:04d}" for i, tweet in enumerate(request.tweets)]
-        
-        result = {
-            "success": True,
-            "tweet_count": len(request.tweets),
-            "tweet_ids": tweet_ids,
-            "timestamp": asyncio.get_event_loop().time()
-        }
-        
-        logger.info(f"Twitter thread created successfully with {len(tweet_ids)} tweets")
-        return result
+
+        if DRY_RUN:
+            return {
+                "success": True,
+                "dry_run": True,
+                "tweet_count": len(request.tweets),
+                "timestamp": datetime.now().isoformat()
+            }
+
+        if not TWITTER_API_KEY:
+            return {"success": False, "error": "Twitter API credentials not configured"}
+
+        client = _get_tweepy_client()
+        if not client:
+            return {"success": False, "error": "Failed to initialize Tweepy client"}
+
+        tweet_ids = []
+        last_tweet_id = None
+
+        try:
+            for tweet_text in request.tweets:
+                kwargs = {"text": tweet_text}
+                if last_tweet_id:
+                    kwargs["reply"] = {"in_reply_to_tweet_id": last_tweet_id}
+
+                response = client.create_tweet(**kwargs)
+                last_tweet_id = response.data['id']
+                tweet_ids.append(last_tweet_id)
+                logger.info(f"Thread tweet created: {last_tweet_id}")
+
+            return {
+                "success": True,
+                "tweet_ids": tweet_ids,
+                "tweet_count": len(tweet_ids),
+                "thread_url": f"https://twitter.com/i/web/status/{tweet_ids[0]}" if tweet_ids else "",
+                "timestamp": datetime.now().isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"Error creating thread: {e}")
+            return {"success": False, "error": str(e), "tweets_posted": len(tweet_ids)}
 
     async def reply_to_tweet(self, request) -> Dict[str, Any]:
-        """
-        Reply to a Twitter post.
-        
-        Args:
-            request: Contains tweet ID to reply to and reply text
-            
-        Returns:
-            Dict with success status and reply tweet ID
-        """
-        logger.info(f"Replying to tweet {request.tweet_id}: {request.text[:50]}...")
-        
-        # In a real implementation, this would connect to Twitter API
-        await asyncio.sleep(0.1)  # Simulate API call
-        
-        result = {
-            "success": True,
-            "original_tweet_id": request.tweet_id,
-            "reply_text": request.text,
-            "timestamp": asyncio.get_event_loop().time(),
-            "reply_tweet_id": f"tw_reply_{hash(request.tweet_id + request.text) % 10000:04d}"
-        }
-        
-        logger.info(f"Twitter reply posted successfully: {result['reply_tweet_id']}")
-        return result
+        """Reply to an existing tweet."""
+        logger.info(f"Replying to tweet {request.tweet_id}")
 
-    async def send_twitter_message(self, request) -> Dict[str, Any]:
-        """
-        Send a Twitter direct message.
-        
-        Args:
-            request: Contains recipient username and message text
-            
-        Returns:
-            Dict with success status and message ID
-        """
-        logger.info(f"Sending Twitter DM to {request.recipient_username}: {request.text[:50]}...")
-        
-        # In a real implementation, this would connect to Twitter API
-        await asyncio.sleep(0.1)  # Simulate API call
-        
-        result = {
-            "success": True,
-            "recipient_username": request.recipient_username,
-            "message_sent": request.text,
-            "timestamp": asyncio.get_event_loop().time(),
-            "message_id": f"tw_dm_{hash(request.recipient_username + request.text) % 10000:04d}"
-        }
-        
-        logger.info(f"Twitter DM sent successfully: {result['message_id']}")
-        return result
+        if DRY_RUN:
+            return {"success": True, "dry_run": True, "in_reply_to": request.tweet_id}
+
+        if not TWITTER_API_KEY:
+            return {"success": False, "error": "Twitter API credentials not configured"}
+
+        client = _get_tweepy_client()
+        if not client:
+            return {"success": False, "error": "Failed to initialize Tweepy client"}
+
+        try:
+            response = client.create_tweet(
+                text=request.text,
+                reply={"in_reply_to_tweet_id": request.tweet_id}
+            )
+            reply_id = response.data['id']
+            return {
+                "success": True,
+                "reply_id": reply_id,
+                "in_reply_to": request.tweet_id,
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error replying to tweet: {e}")
+            return {"success": False, "error": str(e)}
 
     async def like_tweet(self, request) -> Dict[str, Any]:
-        """
-        Like a Twitter post.
-        
-        Args:
-            request: Contains tweet ID to like
-            
-        Returns:
-            Dict with success status
-        """
+        """Like a tweet."""
         logger.info(f"Liking tweet {request.tweet_id}")
-        
-        # In a real implementation, this would connect to Twitter API
-        await asyncio.sleep(0.05)  # Simulate API call
-        
-        result = {
-            "success": True,
-            "tweet_id": request.tweet_id,
-            "timestamp": asyncio.get_event_loop().time(),
-            "action": "liked"
-        }
-        
-        logger.info(f"Tweet liked successfully: {request.tweet_id}")
-        return result
 
-    async def get_twitter_followers(self) -> Dict[str, Any]:
-        """
-        Retrieve Twitter followers.
-        
-        Returns:
-            Dict with list of followers
-        """
-        logger.info("Retrieving Twitter followers")
-        
-        # In a real implementation, this would fetch followers from the API
-        await asyncio.sleep(0.1)  # Simulate API call
-        
-        followers = [
-            {"username": "follower1", "display_name": "Follower One", "id": "123456"},
-            {"username": "follower2", "display_name": "Follower Two", "id": "789012"},
-            {"username": "follower3", "display_name": "Follower Three", "id": "345678"}
-        ]
-        
-        result = {
-            "success": True,
-            "followers": followers,
-            "total_count": len(followers)
-        }
-        
-        logger.info(f"Retrieved {len(followers)} Twitter followers")
-        return result
+        if DRY_RUN:
+            return {"success": True, "dry_run": True, "tweet_id": request.tweet_id}
+
+        if not TWITTER_API_KEY:
+            return {"success": False, "error": "Twitter API credentials not configured"}
+
+        client = _get_tweepy_client()
+        if not client:
+            return {"success": False, "error": "Failed to initialize Tweepy client"}
+
+        try:
+            # Get authenticated user ID first
+            me = client.get_me()
+            user_id = me.data.id
+            client.like(user_id, request.tweet_id)
+            return {
+                "success": True,
+                "tweet_id": request.tweet_id,
+                "action": "liked",
+                "timestamp": datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error liking tweet: {e}")
+            return {"success": False, "error": str(e)}
 
     async def run(self):
-        """Run the Twitter MCP server"""
+        """Run the Twitter MCP server via stdio."""
         from mcp.server.stdio import stdio_server
-        async with stdio_server(self.server) as make_session:
-            async for session in make_session():
-                # Keep the server running
-                await session.until_closed()
+        async with stdio_server() as (read_stream, write_stream):
+            await self.server.run(
+                read_stream,
+                write_stream,
+                self.server.create_initialization_options()
+            )
 
+
+# --- Pydantic request models ---
 
 class TwitterPostRequest(BaseModel):
-    """Request to create a Twitter post (tweet)."""
     text: str = Field(..., description="Content of the tweet (max 280 characters)")
-    media_url: str = Field(default="", description="Optional URL to media to attach to the tweet")
 
 
 class TwitterThreadRequest(BaseModel):
-    """Request to create a Twitter thread (series of tweets)."""
     tweets: List[str] = Field(..., description="List of tweet texts in the thread")
 
 
 class TwitterReplyRequest(BaseModel):
-    """Request to reply to a Twitter post."""
     tweet_id: str = Field(..., description="ID of the tweet to reply to")
     text: str = Field(..., description="Content of the reply")
 
 
-class TwitterMessageRequest(BaseModel):
-    """Request to send a Twitter direct message."""
-    recipient_username: str = Field(..., description="Username of the recipient")
-    text: str = Field(..., description="Message content to send")
-
-
 class TwitterLikeRequest(BaseModel):
-    """Request to like a Twitter post."""
     tweet_id: str = Field(..., description="ID of the tweet to like")
 
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-# Entry point for running the server
 async def serve():
-    """Run the Twitter MCP server."""
+    """Entry point for running the Twitter MCP server."""
     server = TwitterMCP()
     await server.run()
 

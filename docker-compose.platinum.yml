@@ -1,0 +1,282 @@
+# ============================================
+# AI Employee Vault - Platinum Phase Deployment
+# Advanced Cloud + Local Agent Configuration
+# ============================================
+
+version: '3.8'
+
+services:
+  # ===========================================
+  # Platinum Phase Cloud Agent (24/7 Operation)
+  # ===========================================
+  cloud-agent:
+    build:
+      context: .
+      dockerfile: Platinum_Phase/Dockerfile.cloud
+    container_name: ai-employee-cloud-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - VAULT_PATH=/app/vault
+      - DEV_MODE=false
+      - HEALTH_PORT=8080
+      - APP_VERSION=2.0.0-platinum
+      - AGENT_TYPE=cloud
+      - AGENT_ROLE=cloud-draft
+      - SYNC_ENABLED=true
+      - CLAIM_BY_MOVE_ENABLED=true
+      - CLOUD_DRAFT_ONLY=true
+      - APP_PHASE=platinum
+    ports:
+      - "8080:8080"
+    volumes:
+      - vault-data:/app/vault
+      - cloud-logs:/app/vault/Logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - ai-employee-net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.role=cloud-draft"
+
+  # ===========================================
+  # Platinum Phase Local Agent (Execution & Sync)
+  # ===========================================
+  local-agent:
+    build:
+      context: .
+      dockerfile: Platinum_Phase/Dockerfile.local
+    container_name: ai-employee-local-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - VAULT_PATH=/app/vault
+      - DEV_MODE=false
+      - HEALTH_PORT=8081
+      - APP_VERSION=2.0.0-platinum
+      - AGENT_TYPE=local
+      - AGENT_ROLE=local-execution
+      - SYNC_ENABLED=true
+      - CLAIM_BY_MOVE_ENABLED=true
+      - LOCAL_EXECUTION_ONLY=true
+      - APP_PHASE=platinum
+    ports:
+      - "8081:8081"
+    volumes:
+      - vault-data:/app/vault
+      - local-logs:/app/vault/Logs
+      - /var/run/docker.sock:/var/run/docker.sock  # For local execution
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - ai-employee-net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1024M
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.role=local-execution"
+
+  # ===========================================
+  # Platinum Phase Vault Sync Service
+  # ===========================================
+  vault-sync:
+    build:
+      context: .
+      dockerfile: Platinum_Phase/Dockerfile.sync
+    container_name: ai-employee-vault-sync
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - VAULT_PATH=/app/vault
+      - SYNC_METHOD=git
+      - SYNC_INTERVAL=60
+      - GIT_REMOTE_URL=${GIT_REMOTE_URL}
+      - GIT_BRANCH=${GIT_BRANCH:-main}
+      - SYNC_DIRECTION=bidirectional
+      - APP_PHASE=platinum
+    volumes:
+      - vault-data:/app/vault
+      - git-credentials:/root/.ssh
+    networks:
+      - ai-employee-net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.service=vault-sync"
+
+  # ===========================================
+  # Platinum Phase Load Balancer (Nginx)
+  # ===========================================
+  load-balancer:
+    image: nginx:alpine
+    container_name: ai-employee-load-balancer
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/platinum.conf:/etc/nginx/nginx.conf:ro
+      - nginx-certs:/etc/nginx/certs
+    depends_on:
+      - cloud-agent
+      - local-agent
+    networks:
+      - ai-employee-net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 64M
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.service=load-balancer"
+
+  # ===========================================
+  # Platinum Phase Monitoring Stack
+  # ===========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ai-employee-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./deploy/prometheus/config.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - ai-employee-net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.service=monitoring"
+
+  grafana:
+    image: grafana/grafana-enterprise:latest
+    container_name: ai-employee-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - ai-employee-net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.service=dashboard"
+
+  # ===========================================
+  # Platinum Phase Alert Manager
+  # ===========================================
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: ai-employee-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./deploy/alertmanager/config.yml:/etc/alertmanager/config.yml:ro
+    networks:
+      - ai-employee-net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 128M
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.service=alerting"
+
+# ===========================================
+# Networks
+# ===========================================
+networks:
+  ai-employee-net:
+    driver: bridge
+    labels:
+      - "ai.employee.phase=platinum"
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  vault-data:
+    driver: local
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.purpose=data"
+  cloud-logs:
+    driver: local
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.agent=cloud"
+  local-logs:
+    driver: local
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.agent=local"
+  git-credentials:
+    driver: local
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.purpose=security"
+  nginx-certs:
+    driver: local
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.purpose=security"
+  prometheus-data:
+    driver: local
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.purpose=monitoring"
+  grafana-data:
+    driver: local
+    labels:
+      - "ai.employee.phase=platinum"
+      - "ai.employee.purpose=dashboard"

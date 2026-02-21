@@ -1,0 +1,63 @@
+FROM python:3.12-slim
+
+LABEL maintainer="AI Employee Vault"
+LABEL version="2.0.0-platinum"
+
+# Prevent Python from writing .pyc and enable unbuffered output
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PORT=8080
+ENV VAULT_PATH=/app/vault
+
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    openssh-client \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python dependencies
+COPY requirements.deploy.txt ./
+RUN pip install --no-cache-dir -r requirements.deploy.txt
+
+# Install platinum phase dependencies if they exist (using a safer approach)
+RUN if [ -f "Platinum_Phase/requirements.txt" ]; then \
+        pip install --no-cache-dir -r Platinum_Phase/requirements.txt; \
+    else \
+        echo "No platinum requirements found"; \
+    fi
+
+# Copy application code
+COPY . .
+
+# Create vault directory structure
+RUN mkdir -p /app/vault/Inbox
+RUN mkdir -p /app/vault/Needs_Action
+RUN mkdir -p /app/vault/Plans
+RUN mkdir -p /app/vault/Pending_Approval
+RUN mkdir -p /app/vault/Approved
+RUN mkdir -p /app/vault/In_Progress/cloud-agent
+RUN mkdir -p /app/vault/In_Progress/local-agent
+RUN mkdir -p /app/vault/Done
+RUN mkdir -p /app/vault/Rejected
+RUN mkdir -p /app/vault/Logs
+RUN mkdir -p /app/vault/Accounting
+RUN mkdir -p /app/vault/Briefings
+RUN mkdir -p /app/vault/Signals
+RUN mkdir -p /app/vault/Updates
+RUN mkdir -p /app/vault/Drop_Folder
+RUN mkdir -p /app/vault/History
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:${PORT}/health || exit 1
+
+EXPOSE $PORT
+
+# Start the application
+CMD ["python", "start_services.py"]

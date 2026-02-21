@@ -1,0 +1,58 @@
+# Git
+.git
+.gitignore
+
+# Environment files (secrets)
+.env
+.env.*
+
+# Python artifacts
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+venv
+env
+.venv
+
+# IDE
+.vscode
+.idea
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Archives
+*.rar
+*.zip
+*.tar.gz
+
+# Dev/spec files not needed in container
+.specify/
+history/
+specs/
+Bronze_Phase/
+coverage/
+.pytest_cache
+nul
+
+# Deploy configs (not needed inside container)
+deploy/
+.github/
+docker-compose*.yml
+railway.toml
+render.yaml
+DEPLOYMENT.md
+CLAUDE.md
+
+# Node modules (copied selectively)
+node_modules
+
+# Test files
+test_*
+*_test.py
+
+# Logs (generated at runtime)
+Logs/
+*.log

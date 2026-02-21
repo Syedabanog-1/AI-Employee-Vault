@@ -1,0 +1,244 @@
+# ============================================
+# AI Employee Vault - Silver Phase Deployment
+# Enhanced Watchers + MCP Servers Configuration
+# ============================================
+
+version: '3.8'
+
+services:
+  # ===========================================
+  # Silver Phase Orchestrator with Enhanced Capabilities
+  # ===========================================
+  silver-orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-silver-orchestrator
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - VAULT_PATH=/app
+      - DEV_MODE=false
+      - HEALTH_PORT=8080
+      - APP_VERSION=1.0.0-silver
+      - APP_PHASE=silver
+      - ENABLE_GMAIL_WATCHER=true
+      - ENABLE_SOCIAL_WATCHERS=true
+      - APPROVAL_REQUIRED_FOR=["email", "social_post"]
+    ports:
+      - "8080:8080"
+    volumes:
+      - vault-data:/app/Inbox
+      - vault-data:/app/Needs_Action
+      - vault-data:/app/Plans
+      - vault-data:/app/Pending_Approval
+      - vault-data:/app/Approved
+      - vault-data:/app/In_Progress
+      - vault-data:/app/Done
+      - vault-data:/app/Logs
+      - vault-data:/app/Briefings
+      - vault-data:/app/Signals
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=silver"
+      - "ai.employee.component=orchestrator"
+
+  # ===========================================
+  # Silver Phase Email MCP Server
+  # ===========================================
+  email-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-email-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - SERVICE=email-mcp
+      - APP_VERSION=1.0.0-silver
+      - APP_PHASE=silver
+    command: ["python", "mcp-servers/email-mcp/server.py"]
+    depends_on:
+      silver-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=silver"
+      - "ai.employee.mcp=email"
+
+  # ===========================================
+  # Silver Phase Social Media MCP Server
+  # ===========================================
+  social-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-social-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - SERVICE=social-mcp
+      - APP_VERSION=1.0.0-silver
+      - APP_PHASE=silver
+    command: ["python", "mcp-servers/social-mcp/server.py"]
+    depends_on:
+      silver-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=silver"
+      - "ai.employee.mcp=social"
+
+  # ===========================================
+  # Gmail Watcher Service
+  # ===========================================
+  gmail-watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-gmail-watcher
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - VAULT_PATH=/app
+      - APP_VERSION=1.0.0-silver
+      - APP_PHASE=silver
+      - GMAIL_POLL_INTERVAL=30
+    command: ["python", "watchers/gmail_watcher.py"]
+    depends_on:
+      silver-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=silver"
+      - "ai.employee.watcher=gmail"
+
+  # ===========================================
+  # LinkedIn Watcher Service
+  # ===========================================
+  linkedin-watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-linkedin-watcher
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - VAULT_PATH=/app
+      - APP_VERSION=1.0.0-silver
+      - APP_PHASE=silver
+    command: ["python", "watchers/linkedin_watcher.py"]
+    depends_on:
+      silver-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=silver"
+      - "ai.employee.watcher=linkedin"
+
+  # ===========================================
+  # WhatsApp Watcher Service
+  # ===========================================
+  whatsapp-watcher:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-whatsapp-watcher
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - VAULT_PATH=/app
+      - APP_VERSION=1.0.0-silver
+      - APP_PHASE=silver
+    command: ["python", "watchers/whatsapp_watcher.py"]
+    depends_on:
+      silver-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=silver"
+      - "ai.employee.watcher=whatsapp"
+
+  # ===========================================
+  # Silver Phase Web Interface
+  # ===========================================
+  web-interface:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-web-interface
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - VAULT_PATH=/app
+      - DEV_MODE=false
+      - HEALTH_PORT=8080
+      - APP_VERSION=1.0.0-silver
+      - APP_PHASE=silver
+    ports:
+      - "8080:8080"
+    volumes:
+      - vault-data:/app/Inbox
+      - vault-data:/app/Needs_Action
+      - vault-data:/app/Plans
+      - vault-data:/app/Pending_Approval
+      - vault-data:/app/Approved
+      - vault-data:/app/In_Progress
+      - vault-data:/app/Done
+      - vault-data:/app/Logs
+      - vault-data:/app/Briefings
+      - vault-data:/app/Signals
+    command: ["python", "healthcheck.py"]
+    depends_on:
+      silver-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=silver"
+      - "ai.employee.interface=web"
+
+# ===========================================
+# Networks
+# ===========================================
+networks:
+  ai-employee-net:
+    driver: bridge
+    labels:
+      - "ai.employee.phase=silver"
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  vault-data:
+    driver: local
+    labels:
+      - "ai.employee.phase=silver"
+      - "ai.employee.purpose=data"

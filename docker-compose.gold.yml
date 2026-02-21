@@ -1,0 +1,307 @@
+# ============================================
+# AI Employee Vault - Gold Phase Deployment
+# Full Integration + Cross-Domain Configuration
+# ============================================
+
+version: '3.8'
+
+services:
+  # ===========================================
+  # Gold Phase Orchestrator with Advanced Capabilities
+  # ===========================================
+  gold-orchestrator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-gold-orchestrator
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - VAULT_PATH=/app
+      - DEV_MODE=false
+      - HEALTH_PORT=8080
+      - APP_VERSION=1.0.0-gold
+      - APP_PHASE=gold
+      - ENABLE_ACCOUNTING_INTEGRATION=true
+      - ENABLE_SOCIAL_PLATFORMS=true
+      - ENABLE_RALPH_LOOP=true
+      - ENABLE_CELE_BRIEFING=true
+      - CEO_BRIEFING_SCHEDULE="0 8 * * 1"
+    ports:
+      - "8080:8080"
+    volumes:
+      - vault-data:/app/Inbox
+      - vault-data:/app/Needs_Action
+      - vault-data:/app/Plans
+      - vault-data:/app/Pending_Approval
+      - vault-data:/app/Approved
+      - vault-data:/app/In_Progress
+      - vault-data:/app/Done
+      - vault-data:/app/Logs
+      - vault-data:/app/Briefings
+      - vault-data:/app/Signals
+      - vault-data:/app/Accounting
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - ai-employee-net
+      - accounting-net
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.component=orchestrator"
+
+  # ===========================================
+  # Gold Phase Odoo MCP Server
+  # ===========================================
+  odoo-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-odoo-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - SERVICE=odoo-mcp
+      - APP_VERSION=1.0.0-gold
+      - APP_PHASE=gold
+      - ODOO_URL=http://odoo:8069
+      - ODOO_DB_NAME=ai_employee_vault
+    command: ["python", "mcp-servers/odoo-mcp/server.py"]
+    depends_on:
+      gold-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+      - accounting-net
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.mcp=odoo"
+
+  # ===========================================
+  # Gold Phase Social Media MCP Server (Multi-Platform)
+  # ===========================================
+  social-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-social-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - SERVICE=social-mcp
+      - APP_VERSION=1.0.0-gold
+      - APP_PHASE=gold
+      - FACEBOOK_PAGE_ID=${FACEBOOK_PAGE_ID}
+      - INSTAGRAM_ACCOUNT_ID=${INSTAGRAM_ACCOUNT_ID}
+      - TWITTER_API_KEY=${TWITTER_API_KEY}
+    command: ["python", "mcp-servers/social-mcp/server.py"]
+    depends_on:
+      gold-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.mcp=social"
+
+  # ===========================================
+  # Gold Phase Browser MCP Server (for complex web automation)
+  # ===========================================
+  browser-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-browser-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - SERVICE=browser-mcp
+      - APP_VERSION=1.0.0-gold
+      - APP_PHASE=gold
+    command: ["python", "mcp-servers/browser-mcp/server.py"]
+    depends_on:
+      gold-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.mcp=browser"
+
+  # ===========================================
+  # Gold Phase Payment MCP Server
+  # ===========================================
+  payment-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-payment-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - SERVICE=payment-mcp
+      - APP_VERSION=1.0.0-gold
+      - APP_PHASE=gold
+    command: ["python", "mcp-servers/payment-mcp/server.py"]
+    depends_on:
+      gold-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.mcp=payment"
+
+  # ===========================================
+  # Odoo Community Edition (Self-Hosted)
+  # ===========================================
+  odoo:
+    image: odoo:19.0
+    container_name: odoo-community
+    restart: unless-stopped
+    environment:
+      - HOST=db
+      - USER=odoo
+      - PASSWORD=odoo
+      - ODOO_RC=/etc/odoo/odoo.conf
+    ports:
+      - "8069:8069"
+    volumes:
+      - odoo-data:/var/lib/odoo
+      - ./config:/etc/odoo
+      - odoo-addons:/mnt/extra-addons
+    depends_on:
+      - db
+    networks:
+      - accounting-net
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.system=accounting"
+
+  # ===========================================
+  # PostgreSQL for Odoo
+  # ===========================================
+  db:
+    image: postgres:15
+    container_name: odoo-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=postgres
+      - POSTGRES_USER=odoo
+      - POSTGRES_PASSWORD=odoo
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - accounting-net
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.database=postgresql"
+
+  # ===========================================
+  # Gold Phase CEO Briefing Generator
+  # ===========================================
+  ceo-briefing:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-ceo-briefing
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - VAULT_PATH=/app
+      - APP_VERSION=1.0.0-gold
+      - APP_PHASE=gold
+      - CEO_BRIEFING_SCHEDULE="0 8 * * 1"
+      - CEO_BRIEFING_RECIPIENTS=${CEO_BRIEFING_RECIPIENTS}
+    command: ["python", "watchers/orchestrator.py", "generate_ceo_briefing"]
+    depends_on:
+      gold-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.function=reporting"
+
+  # ===========================================
+  # Gold Phase Ralph Loop Service
+  # ===========================================
+  ralph-loop:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai-employee-ralph-loop
+    restart: unless-stopped
+    env_file:
+      - .env
+      - advanced.env
+    environment:
+      - VAULT_PATH=/app
+      - APP_VERSION=1.0.0-gold
+      - APP_PHASE=gold
+      - RALPH_LOOP_INTERVAL=300
+      - RALPH_LOOP_MAX_ATTEMPTS=3
+    command: ["python", "watchers/ralph_loop_service.py"]
+    depends_on:
+      gold-orchestrator:
+        condition: service_healthy
+    networks:
+      - ai-employee-net
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.pattern=ralph-loop"
+
+# ===========================================
+# Networks
+# ===========================================
+networks:
+  ai-employee-net:
+    driver: bridge
+    labels:
+      - "ai.employee.phase=gold"
+  accounting-net:
+    driver: bridge
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.domain=accounting"
+
+# ===========================================
+# Volumes
+# ===========================================
+volumes:
+  vault-data:
+    driver: local
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.purpose=data"
+  odoo-data:
+    driver: local
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.system=accounting"
+  db-data:
+    driver: local
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.database=postgresql"
+  odoo-addons:
+    driver: local
+    labels:
+      - "ai.employee.phase=gold"
+      - "ai.employee.system=accounting"

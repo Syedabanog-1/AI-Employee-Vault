@@ -1,0 +1,18 @@
+# Railway Configuration for Platinum Phase
+# Deploys both Cloud and Local agents
+
+[build]
+builder = "dockerfile"
+dockerfilePath = "Platinum_Phase/Dockerfile.cloud"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 60
+restartPolicyType = "on_failure"
+restartPolicyMaxRetries = 3
+
+[variables]
+VAULT_PATH = "/app/vault"
+APP_VERSION = "2.0.0-platinum"
+DEV_MODE = "false"
+AGENT_TYPE = "cloud"

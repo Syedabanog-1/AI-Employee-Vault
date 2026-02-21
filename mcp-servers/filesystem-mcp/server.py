@@ -26,7 +26,7 @@ class FilesystemMCP:
         read_file_tool = Tool(
             name="read_file",
             description="Read the contents of a file",
-            input_schema={
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "Path to the file to read"}
@@ -38,7 +38,7 @@ class FilesystemMCP:
         write_file_tool = Tool(
             name="write_file",
             description="Write content to a file",
-            input_schema={
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "Path to the file to write"},
@@ -51,7 +51,7 @@ class FilesystemMCP:
         list_directory_tool = Tool(
             name="list_directory",
             description="List files and directories in a given path",
-            input_schema={
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "Path to list"}
@@ -63,7 +63,7 @@ class FilesystemMCP:
         create_directory_tool = Tool(
             name="create_directory",
             description="Create a new directory",
-            input_schema={
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "path": {"type": "string", "description": "Path of the directory to create"}

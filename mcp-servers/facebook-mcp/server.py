@@ -1,16 +1,38 @@
 #!/usr/bin/env python3
 """
 Facebook MCP Server
-Provides tools for interacting with Facebook through the Model Context Protocol.
+Provides tools for interacting with Facebook Graph API
+through the Model Context Protocol.
 """
 
 import asyncio
 import logging
+import os
+from datetime import datetime
 from typing import Dict, Any, List
+
+import requests
 from pydantic import BaseModel, Field
 from mcp.server import Server
 from mcp.types import Tool
-import json
+
+# Load env from .env file if available
+try:
+    from dotenv import load_dotenv
+    from pathlib import Path
+    load_dotenv(Path(__file__).parent.parent.parent / '.env')
+except ImportError:
+    pass
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- Credential loading ---
+FACEBOOK_ACCESS_TOKEN = os.getenv('FACEBOOK_ACCESS_TOKEN', '')
+FACEBOOK_PAGE_ID = os.getenv('FACEBOOK_PAGE_ID', '')
+DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'
+GRAPH_API_BASE = 'https://graph.facebook.com/v18.0'
 
 
 class FacebookMCP:
@@ -21,254 +43,206 @@ class FacebookMCP:
     def _setup_handlers(self):
         """Setup MCP capability handlers"""
 
-        # Define tools
-        create_facebook_post_tool = Tool(
-            name="create_facebook_post",
-            description="Create a post on the authenticated Facebook account",
-            input_schema={
+        create_facebook_page_post_tool = Tool(
+            name="create_facebook_page_post",
+            description="Create a post on the configured Facebook Page",
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "message": {
-                        "type": "string", 
+                        "type": "string",
                         "description": "Content of the post"
                     },
                     "link": {
-                        "type": "string", 
+                        "type": "string",
                         "description": "Optional URL to include in the post",
                         "default": ""
-                    },
-                    "privacy": {
-                        "type": "string", 
-                        "description": "Privacy setting: public, friends, or private",
-                        "default": "public"
                     }
                 },
                 "required": ["message"]
             }
         )
 
-        create_facebook_page_post_tool = Tool(
-            name="create_facebook_page_post",
-            description="Create a post on a Facebook page",
-            input_schema={
+        get_page_insights_tool = Tool(
+            name="get_facebook_page_insights",
+            description="Get basic insights for the configured Facebook Page",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        )
+
+        get_page_posts_tool = Tool(
+            name="get_facebook_page_posts",
+            description="Get recent posts from the configured Facebook Page",
+            inputSchema={
                 "type": "object",
                 "properties": {
-                    "page_id": {
-                        "type": "string", 
-                        "description": "Facebook page ID"
-                    },
-                    "message": {
-                        "type": "string", 
-                        "description": "Content of the post"
-                    },
-                    "link": {
-                        "type": "string", 
-                        "description": "Optional URL to include in the post",
-                        "default": ""
+                    "limit": {
+                        "type": "integer",
+                        "description": "Number of posts to retrieve (max 25)",
+                        "default": 5
                     }
-                },
-                "required": ["page_id", "message"]
+                }
             }
         )
 
-        send_facebook_message_tool = Tool(
-            name="send_facebook_message",
-            description="Send a private message to a Facebook user",
-            input_schema={
-                "type": "object",
-                "properties": {
-                    "recipient_id": {
-                        "type": "string", 
-                        "description": "Recipient's Facebook user ID or username"
-                    },
-                    "message": {
-                        "type": "string", 
-                        "description": "Message content to send"
-                    }
-                },
-                "required": ["recipient_id", "message"]
-            }
-        )
-
-        get_facebook_pages_tool = Tool(
-            name="get_facebook_pages",
-            description="Get list of Facebook pages associated with the account",
-            input_schema={
-                "type": "object",
-                "properties": {},
-            }
-        )
-
-        # Register tools
         @self.server.list_tools()
         async def list_tools() -> List[Tool]:
             return [
-                create_facebook_post_tool,
                 create_facebook_page_post_tool,
-                send_facebook_message_tool,
-                get_facebook_pages_tool
+                get_page_insights_tool,
+                get_page_posts_tool,
             ]
 
-        # Register handlers
         @self.server.call_tool()
         async def call_tool(name: str, arguments: Dict[str, Any]) -> List[Dict[str, Any]]:
-            if name == "create_facebook_post":
-                request = FacebookPostRequest(**arguments)
-                return [await self.create_facebook_post(request)]
-            elif name == "create_facebook_page_post":
+            if name == "create_facebook_page_post":
                 request = FacebookPagePostRequest(**arguments)
                 return [await self.create_facebook_page_post(request)]
-            elif name == "send_facebook_message":
-                request = FacebookMessageRequest(**arguments)
-                return [await self.send_facebook_message(request)]
-            elif name == "get_facebook_pages":
-                return [await self.get_facebook_pages()]
+            elif name == "get_facebook_page_insights":
+                return [await self.get_facebook_page_insights()]
+            elif name == "get_facebook_page_posts":
+                limit = arguments.get('limit', 5)
+                return [await self.get_facebook_page_posts(limit)]
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
-    async def create_facebook_post(self, request) -> Dict[str, Any]:
-        """
-        Create a Facebook post.
-        
-        Args:
-            request: Contains post content, optional link, and privacy setting
-            
-        Returns:
-            Dict with success status and post ID
-        """
-        logger.info(f"Creating Facebook post: {request.message[:50]}...")
-        
-        # In a real implementation, this would connect to Facebook Graph API
-        await asyncio.sleep(0.1)  # Simulate API call
-        
-        result = {
-            "success": True,
-            "message": request.message,
-            "link": request.link,
-            "privacy": request.privacy,
-            "timestamp": asyncio.get_event_loop().time(),
-            "post_id": f"fb_post_{hash(request.message) % 10000:04d}"
-        }
-        
-        logger.info(f"Facebook post created successfully: {result['post_id']}")
-        return result
-
     async def create_facebook_page_post(self, request) -> Dict[str, Any]:
-        """
-        Create a post on a Facebook page.
-        
-        Args:
-            request: Contains page ID, post content, and optional link
-            
-        Returns:
-            Dict with success status and post ID
-        """
-        logger.info(f"Creating Facebook page post on page {request.page_id}: {request.message[:50]}...")
-        
-        # In a real implementation, this would connect to Facebook Graph API
-        await asyncio.sleep(0.1)  # Simulate API call
-        
-        result = {
-            "success": True,
-            "page_id": request.page_id,
+        """Post to Facebook Page using Graph API."""
+        logger.info(f"Creating Facebook page post: {request.message[:60]}...")
+
+        if DRY_RUN:
+            logger.info(f"[DRY RUN] Would post to Facebook page {FACEBOOK_PAGE_ID}: '{request.message[:80]}'")
+            return {
+                "success": True,
+                "dry_run": True,
+                "page_id": FACEBOOK_PAGE_ID,
+                "message": request.message,
+                "timestamp": datetime.now().isoformat()
+            }
+
+        if not FACEBOOK_ACCESS_TOKEN:
+            return {"success": False, "error": "FACEBOOK_ACCESS_TOKEN not configured"}
+
+        if not FACEBOOK_PAGE_ID:
+            return {"success": False, "error": "FACEBOOK_PAGE_ID not configured in .env"}
+
+        url = f"{GRAPH_API_BASE}/{FACEBOOK_PAGE_ID}/feed"
+        payload = {
             "message": request.message,
-            "link": request.link,
-            "timestamp": asyncio.get_event_loop().time(),
-            "post_id": f"fb_page_{hash(request.page_id + request.message) % 10000:04d}"
+            "access_token": FACEBOOK_ACCESS_TOKEN
         }
-        
-        logger.info(f"Facebook page post created successfully: {result['post_id']}")
-        return result
+        if request.link:
+            payload["link"] = request.link
 
-    async def send_facebook_message(self, request) -> Dict[str, Any]:
-        """
-        Send a Facebook message to a user.
-        
-        Args:
-            request: Contains recipient ID and message content
-            
-        Returns:
-            Dict with success status and message ID
-        """
-        logger.info(f"Sending Facebook message to {request.recipient_id}: {request.message[:50]}...")
-        
-        # In a real implementation, this would connect to Facebook Messenger API
-        await asyncio.sleep(0.1)  # Simulate API call
-        
-        result = {
-            "success": True,
-            "recipient_id": request.recipient_id,
-            "message_sent": request.message,
-            "timestamp": asyncio.get_event_loop().time(),
-            "message_id": f"fb_msg_{hash(request.recipient_id + request.message) % 10000:04d}"
-        }
-        
-        logger.info(f"Facebook message sent successfully: {result['message_id']}")
-        return result
+        try:
+            response = requests.post(url, data=payload, timeout=30)
+            data = response.json()
 
-    async def get_facebook_pages(self) -> Dict[str, Any]:
-        """
-        Retrieve Facebook pages associated with the account.
-        
-        Returns:
-            Dict with list of pages
-        """
-        logger.info("Retrieving Facebook pages")
-        
-        # In a real implementation, this would fetch pages from the API
-        await asyncio.sleep(0.1)  # Simulate API call
-        
-        pages = [
-            {"name": "My Business Page", "id": "1234567890", "category": "Business"},
-            {"name": "Personal Fan Page", "id": "0987654321", "category": "Community"}
-        ]
-        
-        result = {
-            "success": True,
-            "pages": pages,
-            "total_count": len(pages)
+            if response.status_code == 200 and 'id' in data:
+                post_id = data['id']
+                logger.info(f"Facebook post created: {post_id}")
+                return {
+                    "success": True,
+                    "post_id": post_id,
+                    "page_id": FACEBOOK_PAGE_ID,
+                    "url": f"https://www.facebook.com/{post_id}",
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                error_msg = data.get('error', {}).get('message', response.text)
+                logger.error(f"Facebook API error {response.status_code}: {error_msg}")
+                return {"success": False, "error": error_msg, "status_code": response.status_code}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error posting to Facebook: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def get_facebook_page_insights(self) -> Dict[str, Any]:
+        """Get basic page insights (fans, engagement)."""
+        logger.info("Retrieving Facebook page insights")
+
+        if not FACEBOOK_ACCESS_TOKEN or not FACEBOOK_PAGE_ID:
+            return {"success": False, "error": "Facebook credentials not configured"}
+
+        url = f"{GRAPH_API_BASE}/{FACEBOOK_PAGE_ID}"
+        params = {
+            "fields": "name,fan_count,followers_count,talking_about_count",
+            "access_token": FACEBOOK_ACCESS_TOKEN
         }
-        
-        logger.info(f"Retrieved {len(pages)} Facebook pages")
-        return result
+
+        try:
+            response = requests.get(url, params=params, timeout=15)
+            data = response.json()
+
+            if response.status_code == 200:
+                return {
+                    "success": True,
+                    "page_name": data.get('name', ''),
+                    "fans": data.get('fan_count', 0),
+                    "followers": data.get('followers_count', 0),
+                    "talking_about": data.get('talking_about_count', 0),
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                return {"success": False, "error": data.get('error', {}).get('message', response.text)}
+
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e)}
+
+    async def get_facebook_page_posts(self, limit: int = 5) -> Dict[str, Any]:
+        """Get recent posts from the configured Facebook Page."""
+        logger.info(f"Retrieving {limit} recent Facebook page posts")
+
+        if not FACEBOOK_ACCESS_TOKEN or not FACEBOOK_PAGE_ID:
+            return {"success": False, "error": "Facebook credentials not configured"}
+
+        url = f"{GRAPH_API_BASE}/{FACEBOOK_PAGE_ID}/posts"
+        params = {
+            "fields": "id,message,created_time,story",
+            "limit": min(limit, 25),
+            "access_token": FACEBOOK_ACCESS_TOKEN
+        }
+
+        try:
+            response = requests.get(url, params=params, timeout=15)
+            data = response.json()
+
+            if response.status_code == 200:
+                posts = data.get('data', [])
+                return {
+                    "success": True,
+                    "posts": posts,
+                    "count": len(posts),
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                return {"success": False, "error": data.get('error', {}).get('message', response.text)}
+
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e)}
 
     async def run(self):
-        """Run the Facebook MCP server"""
+        """Run the Facebook MCP server via stdio."""
         from mcp.server.stdio import stdio_server
-        async with stdio_server(self.server) as make_session:
-            async for session in make_session():
-                # Keep the server running
-                await session.until_closed()
+        async with stdio_server() as (read_stream, write_stream):
+            await self.server.run(
+                read_stream,
+                write_stream,
+                self.server.create_initialization_options()
+            )
 
 
-class FacebookPostRequest(BaseModel):
-    """Request to create a Facebook post."""
-    message: str = Field(..., description="Content of the post")
-    link: str = Field(default="", description="Optional URL to include in the post")
-    privacy: str = Field(default="public", description="Privacy setting: public, friends, or private")
-
+# --- Pydantic request models ---
 
 class FacebookPagePostRequest(BaseModel):
-    """Request to create a post on a Facebook page."""
-    page_id: str = Field(..., description="Facebook page ID")
     message: str = Field(..., description="Content of the post")
-    link: str = Field(default="", description="Optional URL to include in the post")
+    link: str = Field(default="", description="Optional URL to include")
 
 
-class FacebookMessageRequest(BaseModel):
-    """Request to send a Facebook message."""
-    recipient_id: str = Field(..., description="Recipient's Facebook user ID or username")
-    message: str = Field(..., description="Message content to send")
-
-
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-# Entry point for running the server
 async def serve():
-    """Run the Facebook MCP server."""
+    """Entry point for running the Facebook MCP server."""
     server = FacebookMCP()
     await server.run()
 
