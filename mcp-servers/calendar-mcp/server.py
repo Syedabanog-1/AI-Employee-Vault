@@ -36,7 +36,7 @@ class CalendarMCP:
         create_event_tool = Tool(
             name="create_event",
             description="Create a new calendar event",
-            input_schema={
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "title": {"type": "string", "description": "Title of the event"},
@@ -57,7 +57,7 @@ class CalendarMCP:
         list_events_tool = Tool(
             name="list_events",
             description="List calendar events within a date range",
-            input_schema={
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "start_date": {"type": "string", "format": "date", "description": "Start date (YYYY-MM-DD)"},
@@ -70,7 +70,7 @@ class CalendarMCP:
         find_free_slots_tool = Tool(
             name="find_free_slots",
             description="Find free time slots in the calendar",
-            input_schema={
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "start_date": {"type": "string", "format": "date", "description": "Start date (YYYY-MM-DD)"},

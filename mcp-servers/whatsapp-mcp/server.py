@@ -1,16 +1,40 @@
 #!/usr/bin/env python3
 """
 WhatsApp MCP Server
-Provides tools for interacting with WhatsApp through the Model Context Protocol.
+Provides tools for interacting with WhatsApp Business Cloud API
+through the Model Context Protocol.
 """
 
 import asyncio
 import logging
+import os
+import json
+from datetime import datetime
 from typing import Dict, Any, List
+
+import requests
 from pydantic import BaseModel, Field
 from mcp.server import Server
 from mcp.types import Tool
-import json
+
+# Load env from .env file if available
+try:
+    from dotenv import load_dotenv
+    from pathlib import Path
+    load_dotenv(Path(__file__).parent.parent.parent / '.env')
+except ImportError:
+    pass
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# --- Credential loading ---
+WHATSAPP_ACCESS_TOKEN = os.getenv('WHATSAPP_ACCESS_TOKEN', '')
+WHATSAPP_PHONE_NUMBER_ID = os.getenv('WHATSAPP_PHONE_NUMBER_ID', '')
+WHATSAPP_BUSINESS_ACCOUNT_ID = os.getenv('WHATSAPP_BUSINESS_ACCOUNT_ID', '')
+DRY_RUN = os.getenv('DRY_RUN', 'false').lower() == 'true'
+GRAPH_API_BASE = 'https://graph.facebook.com/v18.0'
 
 
 class WhatsAppMCP:
@@ -21,19 +45,18 @@ class WhatsAppMCP:
     def _setup_handlers(self):
         """Setup MCP capability handlers"""
 
-        # Define tools
         send_whatsapp_message_tool = Tool(
             name="send_whatsapp_message",
-            description="Send a text message via WhatsApp to a specific contact",
-            input_schema={
+            description="Send a text message via WhatsApp Business API to a specific contact",
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "phone_number": {
-                        "type": "string", 
+                        "type": "string",
                         "description": "Recipient's phone number in international format (e.g., +1234567890)"
                     },
                     "message": {
-                        "type": "string", 
+                        "type": "string",
                         "description": "Message content to send"
                     }
                 },
@@ -44,19 +67,19 @@ class WhatsAppMCP:
         send_whatsapp_media_tool = Tool(
             name="send_whatsapp_media",
             description="Send media (image, video, document) via WhatsApp to a specific contact",
-            input_schema={
+            inputSchema={
                 "type": "object",
                 "properties": {
                     "phone_number": {
-                        "type": "string", 
+                        "type": "string",
                         "description": "Recipient's phone number in international format"
                     },
                     "media_url": {
-                        "type": "string", 
+                        "type": "string",
                         "description": "URL to the media file to send"
                     },
                     "caption": {
-                        "type": "string", 
+                        "type": "string",
                         "description": "Optional caption for the media",
                         "default": ""
                     }
@@ -65,45 +88,38 @@ class WhatsAppMCP:
             }
         )
 
-        send_whatsapp_group_message_tool = Tool(
-            name="send_whatsapp_group_message",
-            description="Send a message to a WhatsApp group",
-            input_schema={
+        send_whatsapp_template_tool = Tool(
+            name="send_whatsapp_template",
+            description="Send a WhatsApp template message (approved templates only)",
+            inputSchema={
                 "type": "object",
                 "properties": {
-                    "group_id": {
-                        "type": "string", 
-                        "description": "WhatsApp group ID"
+                    "phone_number": {
+                        "type": "string",
+                        "description": "Recipient's phone number in international format"
                     },
-                    "message": {
-                        "type": "string", 
-                        "description": "Message content to send"
+                    "template_name": {
+                        "type": "string",
+                        "description": "Name of the approved template to use"
+                    },
+                    "language_code": {
+                        "type": "string",
+                        "description": "Language code (e.g., en_US)",
+                        "default": "en_US"
                     }
                 },
-                "required": ["group_id", "message"]
+                "required": ["phone_number", "template_name"]
             }
         )
 
-        get_whatsapp_contacts_tool = Tool(
-            name="get_whatsapp_contacts",
-            description="Get list of contacts from WhatsApp account",
-            input_schema={
-                "type": "object",
-                "properties": {},
-            }
-        )
-
-        # Register tools
         @self.server.list_tools()
         async def list_tools() -> List[Tool]:
             return [
                 send_whatsapp_message_tool,
                 send_whatsapp_media_tool,
-                send_whatsapp_group_message_tool,
-                get_whatsapp_contacts_tool
+                send_whatsapp_template_tool,
             ]
 
-        # Register handlers
         @self.server.call_tool()
         async def call_tool(name: str, arguments: Dict[str, Any]) -> List[Dict[str, Any]]:
             if name == "send_whatsapp_message":
@@ -112,158 +128,180 @@ class WhatsAppMCP:
             elif name == "send_whatsapp_media":
                 request = WhatsAppMediaRequest(**arguments)
                 return [await self.send_whatsapp_media(request)]
-            elif name == "send_whatsapp_group_message":
-                request = WhatsAppGroupRequest(**arguments)
-                return [await self.send_whatsapp_group_message(request)]
-            elif name == "get_whatsapp_contacts":
-                return [await self.get_whatsapp_contacts()]
+            elif name == "send_whatsapp_template":
+                request = WhatsAppTemplateRequest(**arguments)
+                return [await self.send_whatsapp_template(request)]
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
     async def send_whatsapp_message(self, request) -> Dict[str, Any]:
-        """
-        Send a WhatsApp message to a contact.
-        
-        Args:
-            request: Contains phone number and message content
-            
-        Returns:
-            Dict with success status and message ID
-        """
-        logger.info(f"Sending WhatsApp message to {request.phone_number}: {request.message}")
-        
-        # In a real implementation, this would connect to WhatsApp Business API or similar
-        # For now, we'll simulate the operation
-        await asyncio.sleep(0.1)  # Simulate API call
-        
-        # Log the action for debugging
-        result = {
-            "success": True,
-            "phone_number": request.phone_number,
-            "message_sent": request.message,
-            "timestamp": asyncio.get_event_loop().time(),
-            "message_id": f"wa_msg_{hash(request.phone_number + request.message) % 10000:04d}"
+        """Send a WhatsApp text message via Meta Cloud API."""
+        logger.info(f"Sending WhatsApp message to {request.phone_number}")
+
+        if DRY_RUN:
+            logger.info(f"[DRY RUN] Would send: '{request.message}' to {request.phone_number}")
+            return {
+                "success": True,
+                "dry_run": True,
+                "phone_number": request.phone_number,
+                "message": request.message,
+                "timestamp": datetime.now().isoformat()
+            }
+
+        if not WHATSAPP_ACCESS_TOKEN or not WHATSAPP_PHONE_NUMBER_ID:
+            return {"success": False, "error": "WHATSAPP_ACCESS_TOKEN or WHATSAPP_PHONE_NUMBER_ID not configured"}
+
+        # Normalize phone number — strip leading + if present for Meta API
+        to_number = request.phone_number.lstrip('+')
+
+        url = f"{GRAPH_API_BASE}/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
         }
-        
-        logger.info(f"WhatsApp message sent successfully: {result['message_id']}")
-        return result
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to_number,
+            "type": "text",
+            "text": {"preview_url": False, "body": request.message}
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            data = response.json()
+
+            if response.status_code == 200:
+                msg_id = data.get('messages', [{}])[0].get('id', 'unknown')
+                logger.info(f"WhatsApp message sent: {msg_id}")
+                return {
+                    "success": True,
+                    "message_id": msg_id,
+                    "phone_number": request.phone_number,
+                    "timestamp": datetime.now().isoformat()
+                }
+            else:
+                error_msg = data.get('error', {}).get('message', response.text)
+                logger.error(f"WhatsApp API error {response.status_code}: {error_msg}")
+                return {"success": False, "error": error_msg, "status_code": response.status_code}
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error sending WhatsApp message: {e}")
+            return {"success": False, "error": str(e)}
 
     async def send_whatsapp_media(self, request) -> Dict[str, Any]:
-        """
-        Send media via WhatsApp to a contact.
-        
-        Args:
-            request: Contains phone number, media URL, and optional caption
-            
-        Returns:
-            Dict with success status and media ID
-        """
+        """Send media via WhatsApp Business API."""
         logger.info(f"Sending WhatsApp media to {request.phone_number}: {request.media_url}")
-        
-        # In a real implementation, this would upload and send the media
-        await asyncio.sleep(0.2)  # Simulate API call
-        
-        result = {
-            "success": True,
-            "phone_number": request.phone_number,
-            "media_url": request.media_url,
-            "caption": request.caption,
-            "timestamp": asyncio.get_event_loop().time(),
-            "media_id": f"wa_media_{hash(request.phone_number + request.media_url) % 10000:04d}"
-        }
-        
-        logger.info(f"WhatsApp media sent successfully: {result['media_id']}")
-        return result
 
-    async def send_whatsapp_group_message(self, request) -> Dict[str, Any]:
-        """
-        Send a message to a WhatsApp group.
-        
-        Args:
-            request: Contains group ID and message content
-            
-        Returns:
-            Dict with success status and message ID
-        """
-        logger.info(f"Sending WhatsApp message to group {request.group_id}: {request.message}")
-        
-        # In a real implementation, this would connect to WhatsApp Business API
-        await asyncio.sleep(0.1)  # Simulate API call
-        
-        result = {
-            "success": True,
-            "group_id": request.group_id,
-            "message_sent": request.message,
-            "timestamp": asyncio.get_event_loop().time(),
-            "message_id": f"wa_grp_{hash(request.group_id + request.message) % 10000:04d}"
-        }
-        
-        logger.info(f"WhatsApp group message sent successfully: {result['message_id']}")
-        return result
+        if DRY_RUN:
+            logger.info(f"[DRY RUN] Would send media to {request.phone_number}")
+            return {
+                "success": True,
+                "dry_run": True,
+                "phone_number": request.phone_number,
+                "media_url": request.media_url,
+                "timestamp": datetime.now().isoformat()
+            }
 
-    async def get_whatsapp_contacts(self) -> Dict[str, Any]:
-        """
-        Retrieve contacts from the WhatsApp account.
-        
-        Returns:
-            Dict with list of contacts
-        """
-        logger.info("Retrieving WhatsApp contacts")
-        
-        # In a real implementation, this would fetch contacts from the API
-        await asyncio.sleep(0.1)  # Simulate API call
-        
-        contacts = [
-            {"name": "John Doe", "phone": "+1234567890", "status": "active"},
-            {"name": "Jane Smith", "phone": "+0987654321", "status": "active"},
-            {"name": "Business Partner", "phone": "+1122334455", "status": "active"}
-        ]
-        
-        result = {
-            "success": True,
-            "contacts": contacts,
-            "total_count": len(contacts)
+        if not WHATSAPP_ACCESS_TOKEN or not WHATSAPP_PHONE_NUMBER_ID:
+            return {"success": False, "error": "WhatsApp credentials not configured"}
+
+        to_number = request.phone_number.lstrip('+')
+        url = f"{GRAPH_API_BASE}/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
         }
-        
-        logger.info(f"Retrieved {len(contacts)} contacts")
-        return result
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": to_number,
+            "type": "image",
+            "image": {"link": request.media_url, "caption": request.caption}
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            data = response.json()
+            if response.status_code == 200:
+                media_id = data.get('messages', [{}])[0].get('id', 'unknown')
+                return {"success": True, "media_id": media_id, "timestamp": datetime.now().isoformat()}
+            else:
+                error_msg = data.get('error', {}).get('message', response.text)
+                return {"success": False, "error": error_msg}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e)}
+
+    async def send_whatsapp_template(self, request) -> Dict[str, Any]:
+        """Send a WhatsApp approved template message."""
+        logger.info(f"Sending WhatsApp template '{request.template_name}' to {request.phone_number}")
+
+        if DRY_RUN:
+            return {"success": True, "dry_run": True, "template": request.template_name}
+
+        if not WHATSAPP_ACCESS_TOKEN or not WHATSAPP_PHONE_NUMBER_ID:
+            return {"success": False, "error": "WhatsApp credentials not configured"}
+
+        to_number = request.phone_number.lstrip('+')
+        url = f"{GRAPH_API_BASE}/{WHATSAPP_PHONE_NUMBER_ID}/messages"
+        headers = {
+            "Authorization": f"Bearer {WHATSAPP_ACCESS_TOKEN}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "messaging_product": "whatsapp",
+            "to": to_number,
+            "type": "template",
+            "template": {
+                "name": request.template_name,
+                "language": {"code": request.language_code}
+            }
+        }
+
+        try:
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            data = response.json()
+            if response.status_code == 200:
+                msg_id = data.get('messages', [{}])[0].get('id', 'unknown')
+                return {"success": True, "message_id": msg_id, "template": request.template_name}
+            else:
+                error_msg = data.get('error', {}).get('message', response.text)
+                return {"success": False, "error": error_msg}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e)}
 
     async def run(self):
-        """Run the WhatsApp MCP server"""
+        """Run the WhatsApp MCP server via stdio."""
         from mcp.server.stdio import stdio_server
-        async with stdio_server(self.server) as make_session:
-            async for session in make_session():
-                # Keep the server running
-                await session.until_closed()
+        async with stdio_server() as (read_stream, write_stream):
+            await self.server.run(
+                read_stream,
+                write_stream,
+                self.server.create_initialization_options()
+            )
 
+
+# --- Pydantic request models ---
 
 class WhatsAppMessageRequest(BaseModel):
-    """Request to send a WhatsApp message."""
-    phone_number: str = Field(..., description="Recipient's phone number in international format (e.g., +1234567890)")
+    phone_number: str = Field(..., description="Recipient's phone number in international format")
     message: str = Field(..., description="Message content to send")
 
 
 class WhatsAppMediaRequest(BaseModel):
-    """Request to send media via WhatsApp."""
     phone_number: str = Field(..., description="Recipient's phone number in international format")
     media_url: str = Field(..., description="URL to the media file to send")
     caption: str = Field(default="", description="Optional caption for the media")
 
 
-class WhatsAppGroupRequest(BaseModel):
-    """Request to send a message to a WhatsApp group."""
-    group_id: str = Field(..., description="WhatsApp group ID")
-    message: str = Field(..., description="Message content to send")
+class WhatsAppTemplateRequest(BaseModel):
+    phone_number: str = Field(..., description="Recipient's phone number in international format")
+    template_name: str = Field(..., description="Name of the approved template")
+    language_code: str = Field(default="en_US", description="Language code")
 
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-
-# Entry point for running the server
 async def serve():
-    """Run the WhatsApp MCP server."""
+    """Entry point for running the WhatsApp MCP server."""
     server = WhatsAppMCP()
     await server.run()
 
