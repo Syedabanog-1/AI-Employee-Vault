@@ -69,6 +69,31 @@
         "INSTAGRAM_ACCOUNT_ID": "${INSTAGRAM_ACCOUNT_ID}",
         "DRY_RUN": "${DRY_RUN}"
       }
+    },
+    "calendar": {
+      "command": "python",
+      "args": ["-u", "./mcp-servers/calendar-mcp/server.py"],
+      "env": {
+        "GOOGLE_CALENDAR_TOKEN_PATH": "${GOOGLE_CALENDAR_TOKEN_PATH}",
+        "GOOGLE_CLIENT_SECRET_PATH": "${GOOGLE_CLIENT_SECRET_PATH}",
+        "DRY_RUN": "${DRY_RUN}"
+      }
+    },
+    "odoo": {
+      "command": "python",
+      "args": ["-u", "./mcp-servers/odoo-mcp/server.py"],
+      "env": {
+        "ODOO_URL": "${ODOO_URL}",
+        "ODOO_DB": "${ODOO_DB}",
+        "ODOO_USER": "${ODOO_USER}",
+        "ODOO_PASSWORD": "${ODOO_PASSWORD}",
+        "DRY_RUN": "${DRY_RUN}"
+      }
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"],
+      "env": {}
     }
   }
 }

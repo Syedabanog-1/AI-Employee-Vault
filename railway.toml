@@ -11,5 +11,5 @@ restartPolicyMaxRetries = 3
 [variables]
 AGENT_TYPE = "cloud"
 VAULT_PATH = "/app/vault"
-APP_VERSION = "2.0.0-platinum"
+APP_VERSION = "2.1.0-bronze"
 DEV_MODE = "false"

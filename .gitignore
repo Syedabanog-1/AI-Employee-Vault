@@ -6,6 +6,8 @@ nul
 .env
 credentials/gmail_token.json
 credentials/client_secret.json
+credentials/calendar_token.json
+credentials/linkedin_token.json
 
 # Python cache
 __pycache__/
@@ -13,3 +15,15 @@ __pycache__/
 
 # Local IDE/tool config
 .claude/settings.local.json
+
+# Node dependencies
+node_modules/
+
+# Browser session profiles (contain cookies/tokens)
+scripts/chrome-*-profile/
+
+# Screenshots (binary artifacts)
+scripts/*.png
+
+# Playwright artifacts
+scripts/ig_placeholder.png
