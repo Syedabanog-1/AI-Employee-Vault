@@ -139,7 +139,7 @@ class ApprovalRequest(BaseModel):
 def _count_files(directory: Path) -> int:
     if not directory.exists():
         return 0
-    return len(list(directory.glob("*.md")))
+    return len(list(directory.rglob("*.md")))
 
 
 def _format_uptime(seconds: float) -> str:
@@ -801,6 +801,27 @@ Script: scripts/send_whatsapp_playwright.js
         "phone": req.phone,
         "message": f"WhatsApp draft for {req.phone} placed in Pending Approval",
         "draft_file": str(filepath.relative_to(VAULT_PATH)) if VAULT_PATH.exists() else filename,
+    }
+
+
+# =========================================
+# Seed endpoint — repopulate queues from baked-in vault files
+# =========================================
+@app.get("/api/seed", tags=["System"])
+async def seed_status():
+    """Return current queue counts; vault seed files are baked into the Docker image."""
+    queues = {k: _count_files(VAULT_PATH / v) for k, v in QUEUE_FOLDERS.items()}
+    in_progress_cloud = len(list((VAULT_PATH / "In_Progress" / "cloud-agent").glob("*.md"))) \
+        if (VAULT_PATH / "In_Progress" / "cloud-agent").exists() else 0
+    return {
+        "agent": "cloud",
+        "seeded": True,
+        "vault_path": str(VAULT_PATH),
+        "queue_counts": queues,
+        "in_progress_breakdown": {"cloud-agent": in_progress_cloud},
+        "total_tasks": sum(queues.values()),
+        "message": "Vault seed files are baked into the Docker image at build time.",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
