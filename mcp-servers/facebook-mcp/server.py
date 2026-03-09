@@ -108,6 +108,22 @@ class FacebookMCP:
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
+    def _resolve_page_token(self) -> str:
+        """Return a Page Access Token. If the stored token is a User token, exchange it via /me/accounts."""
+        try:
+            resp = requests.get(
+                f"{GRAPH_API_BASE}/me/accounts",
+                params={"access_token": FACEBOOK_ACCESS_TOKEN},
+                timeout=15
+            )
+            accounts = resp.json().get("data", [])
+            for account in accounts:
+                if account.get("id") == FACEBOOK_PAGE_ID:
+                    return account["access_token"]
+        except Exception as e:
+            logger.warning(f"Could not resolve page token via /me/accounts: {e}")
+        return FACEBOOK_ACCESS_TOKEN
+
     async def create_facebook_page_post(self, request) -> Dict[str, Any]:
         """Post to Facebook Page using Graph API."""
         logger.info(f"Creating Facebook page post: {request.message[:60]}...")
@@ -128,10 +144,11 @@ class FacebookMCP:
         if not FACEBOOK_PAGE_ID:
             return {"success": False, "error": "FACEBOOK_PAGE_ID not configured in .env"}
 
+        page_token = self._resolve_page_token()
         url = f"{GRAPH_API_BASE}/{FACEBOOK_PAGE_ID}/feed"
         payload = {
             "message": request.message,
-            "access_token": FACEBOOK_ACCESS_TOKEN
+            "access_token": page_token
         }
         if request.link:
             payload["link"] = request.link

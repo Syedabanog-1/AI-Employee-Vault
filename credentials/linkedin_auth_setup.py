@@ -5,9 +5,11 @@ Run this ONCE to generate an access token for the LinkedIn Watcher.
 Prerequisites:
 1. Create a LinkedIn Developer App at https://www.linkedin.com/developers/
 2. Under Products, request "Sign In with LinkedIn using OpenID Connect"
-3. Under Auth tab, add redirect URL: https://www.linkedin.com/developers/callback
+   AND "Share on LinkedIn" (for w_member_social scope)
+3. Under Auth tab > OAuth 2.0 settings, add redirect URL:
+       http://localhost:9090/callback
 4. Copy Client ID and Client Secret into your .env file
-5. Run this script: python linkedin_auth_setup.py
+5. Run this script: python credentials/linkedin_auth_setup.py
 """
 
 import os
@@ -27,9 +29,9 @@ except ImportError:
     pass
 
 
-CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID', '') 
+CLIENT_ID = os.getenv('LINKEDIN_CLIENT_ID', '')
 CLIENT_SECRET = os.getenv('LINKEDIN_CLIENT_SECRET', '')
-REDIRECT_URI = 'https://www.linkedin.com/developers/callback'
+REDIRECT_URI = 'http://localhost:9090/callback'   # Must match LinkedIn app settings
 SCOPES = 'openid profile email w_member_social'
 TOKEN_FILE = Path(__file__).parent / 'linkedin_token.json'
 
@@ -61,6 +63,10 @@ def main():
     print("=" * 60)
     print("LinkedIn OAuth2 Authentication")
     print("=" * 60)
+    print()
+    print("BEFORE CONTINUING — make sure you have added this redirect URL")
+    print(f"to your LinkedIn App (Auth tab > OAuth 2.0 settings):")
+    print(f"  {REDIRECT_URI}")
     print()
     print("A browser window will open. Sign in with your LinkedIn account.")
     print()
@@ -150,9 +156,22 @@ def main():
     access_token = token_data.get('access_token', '')
     expires_in = token_data.get('expires_in', 0)
 
-    # Save token
+    # Save token JSON
     with open(TOKEN_FILE, 'w') as f:
         json.dump(token_data, f, indent=2)
+
+    # Auto-update .env file
+    env_path = Path(__file__).parent.parent / '.env'
+    env_lines = env_path.read_text(encoding='utf-8').splitlines() if env_path.exists() else []
+    updated = False
+    for i, line in enumerate(env_lines):
+        if line.startswith('LINKEDIN_ACCESS_TOKEN='):
+            env_lines[i] = f'LINKEDIN_ACCESS_TOKEN={access_token}'
+            updated = True
+            break
+    if not updated:
+        env_lines.append(f'LINKEDIN_ACCESS_TOKEN={access_token}')
+    env_path.write_text('\n'.join(env_lines) + '\n', encoding='utf-8')
 
     print()
     print("=" * 60)
@@ -162,11 +181,9 @@ def main():
     print(f"Access Token (first 20 chars): {access_token[:20]}...")
     print(f"Expires in: {expires_in // 86400} days")
     print(f"Token saved to: {TOKEN_FILE}")
+    print(f".env updated automatically with new LINKEDIN_ACCESS_TOKEN")
     print()
-    print("NOW: Copy this token to your .env file:")
-    print(f"  LINKEDIN_ACCESS_TOKEN={access_token}")
-    print()
-    print("Your LinkedIn Watcher should now work!")
+    print("Your LinkedIn MCP server is ready to use!")
 
 
 if __name__ == '__main__':

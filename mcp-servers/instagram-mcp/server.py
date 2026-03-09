@@ -107,6 +107,34 @@ class InstagramMCP:
             }
         )
 
+        send_instagram_dm_tool = Tool(
+            name="send_instagram_dm",
+            description="Send a Direct Message (DM) to an Instagram user via Messenger API",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "recipient_id": {
+                        "type": "string",
+                        "description": "Instagram-Scoped User ID (IGSID) of the recipient"
+                    },
+                    "message": {
+                        "type": "string",
+                        "description": "Text message to send"
+                    }
+                },
+                "required": ["recipient_id", "message"]
+            }
+        )
+
+        get_instagram_conversations_tool = Tool(
+            name="get_instagram_conversations",
+            description="List Instagram DM conversations (shows user IDs you can reply to)",
+            inputSchema={
+                "type": "object",
+                "properties": {}
+            }
+        )
+
         @self.server.list_tools()
         async def list_tools() -> List[Tool]:
             return [
@@ -114,6 +142,8 @@ class InstagramMCP:
                 create_instagram_text_post_tool,
                 get_instagram_profile_tool,
                 get_instagram_insights_tool,
+                send_instagram_dm_tool,
+                get_instagram_conversations_tool,
             ]
 
         @self.server.call_tool()
@@ -128,6 +158,10 @@ class InstagramMCP:
                 return [await self.get_instagram_profile()]
             elif name == "get_instagram_insights":
                 return [await self.get_instagram_insights()]
+            elif name == "send_instagram_dm":
+                return [await self.send_instagram_dm(arguments.get('recipient_id', ''), arguments.get('message', ''))]
+            elif name == "get_instagram_conversations":
+                return [await self.get_instagram_conversations()]
             else:
                 raise ValueError(f"Unknown tool: {name}")
 
@@ -296,6 +330,81 @@ class InstagramMCP:
             else:
                 return {"success": False, "error": data.get('error', {}).get('message', response.text)}
 
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e)}
+
+    async def send_instagram_dm(self, recipient_id: str, message: str) -> Dict[str, Any]:
+        """Send an Instagram DM via Facebook Page Messenger API."""
+        logger.info(f"Sending Instagram DM to {recipient_id}: {message[:60]}...")
+
+        if DRY_RUN:
+            return {"success": True, "dry_run": True, "recipient_id": recipient_id, "message": message, "timestamp": datetime.now().isoformat()}
+
+        if not INSTAGRAM_ACCESS_TOKEN:
+            return {"success": False, "error": "INSTAGRAM_ACCESS_TOKEN not configured"}
+
+        fb_page_id = os.getenv('FACEBOOK_PAGE_ID', '')
+        if not fb_page_id:
+            return {"success": False, "error": "FACEBOOK_PAGE_ID not configured in .env"}
+
+        payload = {
+            "recipient": {"id": recipient_id},
+            "message": {"text": message},
+            "messaging_type": "RESPONSE",
+            "access_token": INSTAGRAM_ACCESS_TOKEN
+        }
+
+        try:
+            r = requests.post(
+                f"{GRAPH_API_BASE}/{fb_page_id}/messages",
+                json=payload,
+                timeout=30
+            )
+            data = r.json()
+            if r.status_code == 200 and 'message_id' in data:
+                logger.info(f"DM sent: {data['message_id']}")
+                return {"success": True, "message_id": data['message_id'], "recipient_id": recipient_id, "timestamp": datetime.now().isoformat()}
+            else:
+                error_msg = data.get('error', {}).get('message', r.text)
+                logger.error(f"DM failed: {error_msg}")
+                return {"success": False, "error": error_msg, "status_code": r.status_code}
+        except requests.exceptions.RequestException as e:
+            return {"success": False, "error": str(e)}
+
+    async def get_instagram_conversations(self) -> Dict[str, Any]:
+        """List Instagram DM conversations to find recipient IDs."""
+        logger.info("Fetching Instagram conversations")
+
+        if not INSTAGRAM_ACCESS_TOKEN:
+            return {"success": False, "error": "INSTAGRAM_ACCESS_TOKEN not configured"}
+
+        fb_page_id = os.getenv('FACEBOOK_PAGE_ID', '')
+        if not fb_page_id:
+            return {"success": False, "error": "FACEBOOK_PAGE_ID not configured in .env"}
+
+        try:
+            r = requests.get(
+                f"{GRAPH_API_BASE}/{fb_page_id}/conversations",
+                params={
+                    "platform": "instagram",
+                    "fields": "participants,updated_time,messages{message,from,created_time}",
+                    "access_token": INSTAGRAM_ACCESS_TOKEN
+                },
+                timeout=15
+            )
+            data = r.json()
+            if r.status_code == 200:
+                conversations = []
+                for conv in data.get('data', []):
+                    participants = conv.get('participants', {}).get('data', [])
+                    conversations.append({
+                        "conversation_id": conv.get('id', ''),
+                        "updated_time": conv.get('updated_time', ''),
+                        "participants": participants
+                    })
+                return {"success": True, "conversations": conversations, "count": len(conversations)}
+            else:
+                return {"success": False, "error": data.get('error', {}).get('message', r.text)}
         except requests.exceptions.RequestException as e:
             return {"success": False, "error": str(e)}
 
