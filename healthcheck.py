@@ -132,8 +132,10 @@ class TaskSubmit(BaseModel):
 # Helpers
 # =========================================
 def _count_files(directory: Path) -> int:
+    """Count markdown files recursively, including agent subdirectories."""
     if not directory.exists():
         return 0
+    # rglob finds files in subdirs (e.g. In_Progress/cloud-agent/)
     return len(list(directory.rglob("*.md")))
 
 
